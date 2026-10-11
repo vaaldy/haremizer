@@ -1,10 +1,10 @@
 # haremizer
 
 Text-described anime pixel-art portraits: an independent repository inside
-term-chan. **Current milestone: pretrained SDXL baseline and a passed two-step
-GPU LoRA runtime smoke, localized annotated blink testbed, and lossless sprite
-export available; no fully automatic landmarks, quality-trained model or accepted
-sprite yet.** Python 3.11+; Pillow for PNG
+term-chan. **Current milestone: real SDXL training/inference testbed, annotated
+localized blink, and independently verified sprite JSON export. The 100-step
+style pilot was rejected for quality; no model or sprite is quality-promoted.**
+Fully automatic eye landmarks remain missing. Python 3.11+; Pillow for PNG
 processing. GPU inference additionally needs the dedicated PyTorch/diffusers
 runtime. Source tools do not install packages or download models/data; separately
 user-authorized setup has populated the local runtime, model cache, and candidate
@@ -33,6 +33,42 @@ noisy highlights: **not a valid 64px sprite or trained LoRA**.
 an approved training corpus. Group holdouts by identity/source, never expression.
 Source verification and machine visual review must not be labeled human review.
 Training completion and PNG format checks are not quality acceptance.
+
+### Latest reviewed outcomes
+
+- Two-step 512px SDXL LoRA runtime smoke passed; a 100-step style pilot on six
+  training identities/two whole-identity holdouts also completed in about 117
+  seconds, with finite updates, unchanged frozen weights and exact CPU reload.
+  Peak allocated GPU memory was 5.66 GB. **Quality promotion was rejected:**
+  coarse styling improved in some cases, but one matched descriptor produced an
+  extreme cropped face; red-hair adherence also remained wrong.
+- One constant whole-head/shoulder/margin scaffold was tested on all four
+  descriptors with the unchanged pilot. It did not resolve the crop/geometry
+  and adherence failures. No training extension or prompt sweep followed.
+- A pinned `nerijs/pixel-art-xl` pretrained alternative (revision
+  `8bf4a4d9ea283e00a51fafda8e0539f8248ea037`, 170.5 MB, CreativeML Open RAIL-M)
+  was tested at 512px with the local Animagine base. This combination produced
+  tiled faces/decorative scenes and was rejected, not used for training feedback.
+  Retain nerijs attribution, the model card and applicable license restrictions;
+  its training-data rights are **not** claimed verified.
+- A separate **unloaded pretrained-baseline** prototype now has transparent
+  64px base/blink frames. Its blink changes 54 pixels inside 70 declared eye
+  pixels, with identical alpha/outside pixels. Independent read-only term-chan
+  checks passed exact PNG↔JSON pixels, palette, loader, renderer and fallback
+  behavior. This is format/locality evidence, **not quality acceptance**.
+- Conservative, separately counted storage is approximately **76.7 decimal GB**
+  including the entire shared uv cache, runtime, all system core dumps, and a
+  200 MB diagnostic-image allowance. Earlier combined `du` estimates omitted
+  shared hardlinks from the conservative double-counting policy. A further
+  2 GB reservation still fits the strict 100 GB ceiling; no shared cache was
+  deleted. Recheck before new downloads.
+
+Ignored evidence: `artifacts/style-pilot-01/review.json`,
+`artifacts/composition-guided-pilot-01/review.json`,
+`artifacts/alternative-model-review/`, `artifacts/storage-accounting-01.json`,
+`artifacts/exported-long-wavy-01/neutral.json` and sibling
+`artifacts/exported-long-wavy-01.compatibility.json`. GPU iteration is paused
+pending broader source/identity curation, not awaiting routine training permission.
 
 The legacy SD1 adapter below retains its separate hash-bound human declaration
 gates; general user authorization does not fabricate those declarations or make
@@ -73,12 +109,12 @@ current user authorization policy for future reviewed training implementations.
   files and fake reviews only. Its approval/ready state is a harness setup gate,
   **not authorization for real training**.
 
-Missing: a curated quality training corpus, a quality-training SDXL pipeline,
+Missing: a broader quality training corpus, validated quality-learning recipes,
 independent calibrated visual evaluation, accepted transparent native-grid
 portraits, and fully automatic eye landmarks/semantic blinking. Local annotated
-blink editing and lossless term-chan export are available, not quality acceptance. A pinned base model,
-pretrained inference, and bounded GPU training smoke exist as described here;
-two optimizer steps do not prove sustained training stability. Nothing here declares
+blink editing and lossless term-chan export are available, not quality acceptance.
+A pinned base model, pretrained/adapter inference and bounded GPU training are
+exercised; a successful short pilot does not prove long-run stability. Nothing here declares
 learned quality as passing. Generated outputs must never be silently fed back
 into training.
 
@@ -368,13 +404,15 @@ selection, sweep, retry, scaling, promotion or synthetic feedback is added.
 
 Successful execution reports `pilot_completed_unreviewed`, **not** `smoke_passed`
 or quality acceptance; `quality_assessed`, `promotion` and `synthetic_feedback`
-remain false. The current draft `artifacts/style-pilot-request-01.json` contains
+remain false. The executed `artifacts/style-pilot-request-01.json` contains
 six training and two heldout identities from the same pebonius source, with
 machine-reviewed rights and adult-appearing descriptions (canonical ages not
 supplied). It is a small learning experiment, **not an accepted quality corpus,
-production training or a quality claim**. GPU execution of this new pilot remains
-pending. Parent/coordinator must bound the entire process to 900 seconds; 1024px
-remains disabled, with no automatic extension:
+production training or a quality claim**. GPU execution completed all 100 steps;
+`artifacts/style-pilot-01/review.json` records the subsequent quality rejection.
+Parent/coordinator must bound any separately justified future pilot to 900 seconds;
+1024px remains disabled, with no automatic extension. Historical invocation
+(the existing output is deliberately not overwritable):
 
 ```sh
 timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
