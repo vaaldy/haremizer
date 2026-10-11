@@ -60,9 +60,30 @@ def model_manifest(path):
             "identity_scope": "file names/sizes and JSON hashes; not weight-content attestation"}
 
 
+def validate_lora(lora, lora_sha256):
+    if (lora is None) != (lora_sha256 is None):
+        raise ValueError("lora and lora_sha256 must be supplied together")
+    if lora is None:
+        return None, None
+    if (not isinstance(lora_sha256, str) or len(lora_sha256) != 64 or
+            any(c not in "0123456789abcdef" for c in lora_sha256)):
+        raise ValueError("lora_sha256 must be a full lowercase 64-hex SHA256")
+    path = Path(lora).resolve()
+    limit = 64 * 1024 * 1024
+    if (path.suffix != ".safetensors" or not path.is_file() or
+            not 0 < path.stat().st_size <= limit):
+        raise ValueError("lora must be a nonempty local safetensors file <=64 MiB")
+    with path.open("rb") as file:
+        data = file.read(limit + 1)
+    if not 0 < len(data) <= limit or digest(data) != lora_sha256:
+        raise ValueError("lora bytes must be <=64 MiB and match lora_sha256")
+    return path, {"path": str(lora), "bytes": len(data), "sha256": lora_sha256}
+
+
 def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, steps=20,
            width=None, height=None, variant=None, device="cuda", cpu_offload=False,
-           model_id=None, revision=None, negative_prompt=None, guidance_scale=7.5):
+           model_id=None, revision=None, negative_prompt=None, guidance_scale=7.5,
+           lora=None, lora_sha256=None):
     if negative_prompt is not None and (not isinstance(negative_prompt, str) or
                                         not negative_prompt.strip()):
         raise ValueError("negative_prompt must be None or a nonblank string")
@@ -89,6 +110,9 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
     model, output = Path(model).resolve(), Path(output).resolve()
     if not model.is_dir() or output.exists() or output.is_relative_to(model):
         raise ValueError("local model directory and new output directory outside model required")
+    lora_path, lora_identity = validate_lora(lora, lora_sha256)
+    if lora_path is not None and lora_path.is_relative_to(output):
+        raise ValueError("output directory must not contain the lora source")
     identity = model_manifest(model)
     default_size = 1024 if identity["class"] == "StableDiffusionXLPipeline" else 512
     width, height = default_size if width is None else width, default_size if height is None else height
@@ -102,6 +126,10 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
     pipeline = getattr(diffusers, identity["class"]).from_pretrained(
         str(model), local_files_only=True, use_safetensors=True, torch_dtype=torch.float16,
         **({"variant": variant} if variant else {}))
+    if lora_path is not None:
+        validate_lora(lora_path, lora_sha256)
+        pipeline.load_lora_weights(str(lora_path.parent), weight_name=lora_path.name,
+                                   local_files_only=True, use_safetensors=True)
     if cpu_offload:
         pipeline.enable_model_cpu_offload(gpu_id=0, device="cuda")
     else:
@@ -109,6 +137,7 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
     report = {"model": {**identity, "path": str(model), "id": model_id or model.name,
                         "revision": revision}, "suite": frozen,
               "suite_sha256": frozen["sha256"] if frozen else None,
+              "lora": lora_identity,
               "settings": {"steps": steps, "width": width, "height": height,
                            "max_cases": max_cases, "dtype": "float16", "device": device,
                            "variant": variant, "model_cpu_offload": cpu_offload,
@@ -118,7 +147,8 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
                           "hip": torch.version.hip, "cuda": torch.version.cuda,
                           "gpu": torch.cuda.get_device_name(0),
                           "HSA_OVERRIDE_GFX_VERSION": os.environ.get("HSA_OVERRIDE_GFX_VERSION")},
-              "output_contract": "raw pretrained PNG; alpha may be opaque; not final 48/64 indexed sprites",
+              "output_contract": ("raw inference PNG" if lora_path else "raw pretrained PNG") +
+                                 "; alpha may be opaque; not final 48/64 indexed sprites",
               "visual_quality_assessed": False, "sprite_format_validated": False,
               "training_started": False, "records": []}
     for number, case in enumerate(cases[:max_cases], 1):
@@ -170,6 +200,8 @@ def main():
     parser.add_argument("--cpu-offload", action="store_true")
     parser.add_argument("--model-id")
     parser.add_argument("--revision")
+    parser.add_argument("--lora", type=Path, help="local safetensors adapter <=64 MiB; requires --lora-sha256")
+    parser.add_argument("--lora-sha256", help="full lowercase SHA256 of the supplied adapter")
     try:
         report = sample(**vars(parser.parse_args()))
     except (ValueError, RuntimeError, OSError, ImportError) as error:

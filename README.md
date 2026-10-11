@@ -1,8 +1,8 @@
 # haremizer
 
 Text-described anime pixel-art portraits: an independent repository inside
-term-chan. **Current milestone: real pretrained SDXL baseline and preparation;
-no real model training or accepted sprite yet.** Python 3.11+; Pillow for PNG
+term-chan. **Current milestone: pretrained SDXL baseline and a passed two-step
+GPU LoRA runtime smoke; no quality-trained model or accepted sprite yet.** Python 3.11+; Pillow for PNG
 processing. GPU inference additionally needs the dedicated PyTorch/diffusers
 runtime. Source tools do not install packages or download models/data; separately
 user-authorized setup has populated the local runtime, model cache, and candidate
@@ -71,11 +71,11 @@ current user authorization policy for future reviewed training implementations.
   files and fake reviews only. Its approval/ready state is a harness setup gate,
   **not authorization for real training**.
 
-Missing: curated real training data, a reviewed SDXL-compatible trainer exercised
-on the GPU, independent calibrated visual evaluation, accepted transparent
-native-grid portraits, localized blinking, and term-chan sprite export. A pinned
-base model and actual pretrained inference exist as described above; primitive
-and inference success do not prove training stability. Nothing here declares
+Missing: a curated quality training corpus, a quality-training SDXL pipeline,
+independent calibrated visual evaluation, accepted transparent native-grid
+portraits, localized blinking, and term-chan sprite export. A pinned base model,
+pretrained inference, and bounded GPU training smoke exist as described here;
+two optimizer steps do not prove sustained training stability. Nothing here declares
 learned quality as passing. Generated outputs must never be silently fed back
 into training.
 
@@ -88,7 +88,8 @@ that as blocked without crashing its coordinator.
 
 An explicitly process-scoped `HSA_OVERRIDE_GFX_VERSION=10.3.0` passes the handler's
 small matrix/backward probe. Separate primitive probes also passed convolution
-backward and fp16 attention backward. No optimizer or model fitting ran. This is
+backward and fp16 attention backward. Those primitive probes did not fit a model;
+the separate two-step SDXL smoke below did. This is
 an unsupported compatibility workaround, not proof of complete training stability.
 No global environment or system-package changes were made.
 
@@ -129,8 +130,21 @@ one of `--prompt` or `--suite`. Optional `--negative-prompt` must be a nonblank
 string (default: omitted / Python `None`). `--guidance-scale` must be finite and
 within 1..15 inclusive (default: 7.5). Both controls are forwarded unchanged to
 the pipeline and recorded in manifest `settings`; frozen suite bytes, positive
-prompts, and seeds are unchanged. Outputs remain raw pretrained PNGs, not
+prompts, and seeds are unchanged. Outputs remain raw inference PNGs, not
 validated sprites or quality acceptance.
+
+Optional `--lora /local/path/pytorch_lora_weights.safetensors` and
+`--lora-sha256 FULL_LOWERCASE_64_HEX_SHA256` must be supplied together (Python
+keywords: `lora=None`, `lora_sha256=None`). The adapter must be a real nonempty
+local `.safetensors` file at most 64 MiB; its full byte hash is verified before ML
+imports and again just before loading. No downloads, pickle fallback, fusion,
+or strength control are added. The standard diffusers local-only safetensors
+loader runs before GPU placement/CPU offload. Output must be new and outside the
+base model and adapter source; manifest `lora` records supplied path, byte count,
+and SHA256 (or `null` without an adapter). Inference uses the fp16 pipeline;
+normal inference dtype casting is distinct from the smoke's exact fp32 CPU
+training save/reload verification. Sampling never starts training or promotes
+an adapter. GPU inference with the runtime-smoke adapter is still pending.
 
 ## Bounded SDXL attention-LoRA runtime smoke
 
@@ -138,13 +152,21 @@ validated sprites or quality acceptance.
 legacy SD1 adapter, a quality trainer, promotion, or synthetic-feedback loop.
 It records the existing broad user authorization and truthful `machine:sol`
 review, never invents human approval or calls the legacy preparation gates.
-GPU execution is **pending**; CPU preflight/API tests are not training evidence.
+Actual GPU evidence: `artifacts/sdxl-smoke-02/outcome.json` records
+`smoke_passed`, two 512px optimizer steps, finite losses/gradients, a nonzero
+adapter update, identical exhaustive frozen-UNet hashes, and exact fp32 CPU
+adapter reload through diffusers. It took about 91 seconds wall time (86.6 seconds
+recorded smoke duration), with peak allocated memory 5.66 GB. This is runtime
+plumbing evidence only, not a quality corpus, accepted sprite, or promotion.
+GPU inference with the trained smoke adapter remains **pending**. Attempt 01
+failed before training on the optional `amdsmi` device-memory metric; unavailable
+metrics are now recorded nonfatally, not as zero.
 Separate 1024px pretrained inference hung after 28 denoising steps (exit 134);
-the exact failing post-denoising operation was not instrumented. Earlier 768px
-inference passed. Neither proves training stability.
-This smoke stays at 512px; the parent must separately reprobe before execution,
-with no automatic scaling/retry. Native 64px pretrained samples were not viable
-portraits and are not training data or a quality pass.
+the exact failing post-denoising operation was not instrumented. That experiment
+remains disabled, not retried. Earlier 768px inference passed. Neither proves
+training stability. This smoke stays at 512px, with no automatic scaling/retry.
+Native 64px pretrained samples were not viable portraits and are not training
+data or a quality pass.
 
 Supply `--request` JSON and a new `--output` directory. Paths are absolute or
 relative to the request file. Example shape (replace all evidence placeholders

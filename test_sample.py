@@ -32,6 +32,9 @@ class SamplingTests(unittest.TestCase):
         self.write_index()
         # Fake bytes only: never loaded by ML libraries.
         (self.model / "weights.safetensors").write_bytes(b"mock weights")
+        self.lora = self.root / "adapter.safetensors"
+        self.lora.write_bytes(b"mock adapter, not a real checkpoint")
+        self.lora_sha256 = hashlib.sha256(self.lora.read_bytes()).hexdigest()
         self.output = self.root / "output"
         self.pipeline = MagicMock()
         self.pipeline.side_effect = lambda **kw: SimpleNamespace(
@@ -70,6 +73,8 @@ class SamplingTests(unittest.TestCase):
             torch_dtype=self.torch.float16, variant="fp16")
         self.pipeline.to.assert_called_once_with("cuda")
         self.pipeline.enable_model_cpu_offload.assert_not_called()
+        self.pipeline.load_lora_weights.assert_not_called()
+        self.assertIsNone(report["lora"])
         self.assertEqual(self.pipeline.call_args.kwargs["generator"], ("cuda", 9))
         self.assertEqual(self.pipeline.call_args.kwargs["num_inference_steps"], 20)
         self.assertIsNone(self.pipeline.call_args.kwargs["negative_prompt"])
@@ -121,6 +126,76 @@ class SamplingTests(unittest.TestCase):
         self.assertEqual(report["settings"]["guidance_scale"], 15)
         self.assertEqual(json.loads((self.output / "manifest.json").read_text()), report)
         self.assertEqual(report["model"]["class"], "StableDiffusionXLPipeline")
+
+    def test_lora_local_loading_precedes_placement_and_records_identity(self):
+        for offload in (False, True):
+            with self.subTest(cpu_offload=offload):
+                self.pipeline.reset_mock()
+                self.index["_class_name"] = "StableDiffusionXLPipeline" if offload else "StableDiffusionPipeline"
+                self.write_index()
+                self.output = self.root / f"output-{offload}"
+                report = self.run_sample(prompt="test", lora=self.lora,
+                                         lora_sha256=self.lora_sha256, cpu_offload=offload)
+                self.pipeline.load_lora_weights.assert_called_once_with(
+                    str(self.lora.parent), weight_name=self.lora.name,
+                    local_files_only=True, use_safetensors=True)
+                methods = [call[0] for call in self.pipeline.mock_calls]
+                placement = "enable_model_cpu_offload" if offload else "to"
+                self.assertLess(methods.index("load_lora_weights"), methods.index(placement))
+                self.assertEqual(report["lora"], {"path": str(self.lora),
+                    "bytes": self.lora.stat().st_size, "sha256": self.lora_sha256})
+                self.assertEqual(json.loads((self.output / "manifest.json").read_text()), report)
+                self.assertFalse(report["training_started"])
+                self.assertFalse(report["visual_quality_assessed"])
+                self.assertFalse(report["sprite_format_validated"])
+                self.assertEqual(report["settings"]["dtype"], "float16")
+
+    def test_invalid_lora_fails_before_ml_import(self):
+        empty = self.root / "empty.safetensors"
+        empty.touch()
+        pickle = self.root / "adapter.bin"
+        pickle.write_bytes(self.lora.read_bytes())
+        oversized = self.root / "oversized.safetensors"
+        with oversized.open("wb") as file:
+            file.truncate(64 * 1024 * 1024 + 1)
+        invalid = [{"lora": self.lora}, {"lora_sha256": self.lora_sha256}] + [
+            {"lora": self.lora, "lora_sha256": value}
+            for value in ("", "a" * 63, "a" * 65, "A" * 64, "g" * 64, 123, "0" * 64)] + [
+            {"lora": path, "lora_sha256": self.lora_sha256}
+            for path in (empty, pickle, oversized, self.root, self.root / "missing.safetensors",
+                         "https://example.invalid/adapter.safetensors")]
+        with patch.dict(sys.modules, {"torch": None, "diffusers": None}):
+            for options in invalid:
+                with self.subTest(options=options), self.assertRaises(ValueError):
+                    sample.sample(self.model, self.output, prompt="test", **options)
+        self.assertFalse(self.output.exists())
+        self.loader.from_pretrained.assert_not_called()
+
+    def test_lora_source_cannot_be_inside_output_even_via_symlink(self):
+        source_directory = self.root / "source"
+        source_directory.mkdir()
+        source = source_directory / "adapter.safetensors"
+        source.write_bytes(self.lora.read_bytes())
+        link = self.root / "linked.safetensors"
+        link.symlink_to(source)
+        with patch.dict(sys.modules, {"torch": None, "diffusers": None}):
+            for output in (source_directory, source, self.model / "new-output"):
+                with self.subTest(output=output), self.assertRaises(ValueError):
+                    sample.sample(self.model, output, prompt="test", lora=link,
+                                  lora_sha256=self.lora_sha256)
+        self.assertEqual(source.read_bytes(), self.lora.read_bytes())
+        self.loader.from_pretrained.assert_not_called()
+
+    def test_lora_hash_rechecked_after_base_load(self):
+        def mutate(*args, **kwargs):
+            self.lora.write_bytes(b"changed mock adapter")
+            return self.pipeline
+        self.loader.from_pretrained.side_effect = mutate
+        with self.assertRaisesRegex(ValueError, "match lora_sha256"):
+            self.run_sample(prompt="test", lora=self.lora, lora_sha256=self.lora_sha256)
+        self.pipeline.load_lora_weights.assert_not_called()
+        self.pipeline.to.assert_not_called()
+        self.pipeline.enable_model_cpu_offload.assert_not_called()
 
     def test_four_case_and_step_upper_bounds(self):
         report = self.run_sample(suite=SUITE, max_cases=4, steps=40, width=64, height=64,
@@ -213,12 +288,15 @@ class SamplingTests(unittest.TestCase):
 
     def test_cli_forwards_sampling_controls(self):
         args = ["sample.py", "--model", str(self.model), "--output", str(self.output),
-                "--prompt", "test", "--negative-prompt", "blurry", "--guidance-scale", "6.5"]
+                "--prompt", "test", "--negative-prompt", "blurry", "--guidance-scale", "6.5",
+                "--lora", str(self.lora), "--lora-sha256", self.lora_sha256]
         with patch.object(sys, "argv", args), patch.object(sample, "sample", return_value={}) as run:
             with patch("builtins.print"):
                 sample.main()
         self.assertEqual(run.call_args.kwargs["negative_prompt"], "blurry")
         self.assertEqual(run.call_args.kwargs["guidance_scale"], 6.5)
+        self.assertEqual(run.call_args.kwargs["lora"], self.lora)
+        self.assertEqual(run.call_args.kwargs["lora_sha256"], self.lora_sha256)
 
     def test_import_and_cli_help_do_not_import_ml_or_generate(self):
         code = """
@@ -240,6 +318,8 @@ runpy.run_path('sample.py', run_name='__main__')
         self.assertIn("--suite", result.stdout)
         self.assertIn("--negative-prompt", result.stdout)
         self.assertIn("--guidance-scale", result.stdout)
+        self.assertIn("--lora", result.stdout)
+        self.assertIn("--lora-sha256", result.stdout)
 
 
 if __name__ == "__main__":
