@@ -72,6 +72,10 @@ class SamplingTests(unittest.TestCase):
         self.pipeline.enable_model_cpu_offload.assert_not_called()
         self.assertEqual(self.pipeline.call_args.kwargs["generator"], ("cuda", 9))
         self.assertEqual(self.pipeline.call_args.kwargs["num_inference_steps"], 20)
+        self.assertIsNone(self.pipeline.call_args.kwargs["negative_prompt"])
+        self.assertEqual(self.pipeline.call_args.kwargs["guidance_scale"], 7.5)
+        self.assertIsNone(report["settings"]["negative_prompt"])
+        self.assertEqual(report["settings"]["guidance_scale"], 7.5)
         self.assertEqual(set(p.name for p in self.output.iterdir()), {"case-01.png", "manifest.json"})
         self.assertEqual(json.loads((self.output / "manifest.json").read_text()), report)
         record = report["records"][0]
@@ -97,7 +101,8 @@ class SamplingTests(unittest.TestCase):
     def test_sdxl_explicit_offload_preserves_frozen_suite_seeds(self):
         self.index.update(_class_name="StableDiffusionXLPipeline", force_zeros_for_empty_prompt=True)
         self.write_index()
-        report = self.run_sample(suite=SUITE, max_cases=2, steps=1, cpu_offload=True)
+        report = self.run_sample(suite=SUITE, max_cases=2, steps=1, cpu_offload=True,
+                                 negative_prompt="  blurry, text  ", guidance_scale=15)
         self.pipeline.to.assert_not_called()
         self.pipeline.enable_model_cpu_offload.assert_called_once_with(gpu_id=0, device="cuda")
         self.assertNotIn("variant", self.loader.from_pretrained.call_args.kwargs)
@@ -106,16 +111,32 @@ class SamplingTests(unittest.TestCase):
         self.assertEqual([r["width"] for r in report["records"]], [1024, 1024])
         self.assertEqual(report["suite_sha256"], hashlib.sha256(SUITE.read_bytes()).hexdigest())
         self.assertEqual(report["suite"]["frozen_json"], SUITE.read_text())
+        cases = json.loads(SUITE.read_text())["cases"][:2]
+        self.assertEqual([c.kwargs["prompt"] for c in self.pipeline.call_args_list],
+                         [c["prompt"] for c in cases])
+        for call in self.pipeline.call_args_list:
+            self.assertEqual(call.kwargs["negative_prompt"], "  blurry, text  ")
+            self.assertEqual(call.kwargs["guidance_scale"], 15)
+        self.assertEqual(report["settings"]["negative_prompt"], "  blurry, text  ")
+        self.assertEqual(report["settings"]["guidance_scale"], 15)
+        self.assertEqual(json.loads((self.output / "manifest.json").read_text()), report)
         self.assertEqual(report["model"]["class"], "StableDiffusionXLPipeline")
 
     def test_four_case_and_step_upper_bounds(self):
-        report = self.run_sample(suite=SUITE, max_cases=4, steps=40, width=64, height=64)
+        report = self.run_sample(suite=SUITE, max_cases=4, steps=40, width=64, height=64,
+                                 guidance_scale=1)
+        self.assertEqual(report["settings"]["guidance_scale"], 1)
+        self.assertTrue(all(c.kwargs["guidance_scale"] == 1 for c in self.pipeline.call_args_list))
         self.assertEqual(len(report["records"]), 4)
         self.assertTrue(all(c.kwargs["num_inference_steps"] == 40 for c in self.pipeline.call_args_list))
 
     def test_invalid_bounds_and_inputs_fail_before_import(self):
         invalid = [{"max_cases": v} for v in (0, 5, True)] + [
             {"steps": v} for v in (0, 41, True)] + [
+            {"negative_prompt": v} for v in ("", " \t\n", 1, True, [], {})] + [
+            {"guidance_scale": v} for v in (0.99, 15.01, True, False, float("nan"),
+                                           float("inf"), -float("inf"), "7.5", None,
+                                           10**400)] + [
             {"width": v} for v in (0, 48, 65, 1088, True)] + [
             {"height": 63}, {"device": "cpu"}, {"variant": "bf16"},
             {"seed": -1}, {"seed": 2**32}, {"seed": True}, {"prompt": " "},
@@ -190,6 +211,15 @@ class SamplingTests(unittest.TestCase):
             self.run_sample(prompt="test")
         self.assertEqual(list(self.output.iterdir()), [])
 
+    def test_cli_forwards_sampling_controls(self):
+        args = ["sample.py", "--model", str(self.model), "--output", str(self.output),
+                "--prompt", "test", "--negative-prompt", "blurry", "--guidance-scale", "6.5"]
+        with patch.object(sys, "argv", args), patch.object(sample, "sample", return_value={}) as run:
+            with patch("builtins.print"):
+                sample.main()
+        self.assertEqual(run.call_args.kwargs["negative_prompt"], "blurry")
+        self.assertEqual(run.call_args.kwargs["guidance_scale"], 6.5)
+
     def test_import_and_cli_help_do_not_import_ml_or_generate(self):
         code = """
 import builtins, runpy, sys
@@ -208,6 +238,8 @@ runpy.run_path('sample.py', run_name='__main__')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--cpu-offload", result.stdout)
         self.assertIn("--suite", result.stdout)
+        self.assertIn("--negative-prompt", result.stdout)
+        self.assertIn("--guidance-scale", result.stdout)
 
 
 if __name__ == "__main__":

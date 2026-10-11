@@ -121,6 +121,17 @@ Contact sheets use integer nearest-neighbor scaling with transparent padding for
 mixed native sizes, never stretch a 48 portrait to match a 64 portrait. Sheets
 are viewing aids, not format candidates or quality verdicts.
 
+## Local pretrained sampling controls
+
+`sample.py` samples only a locally supplied SD1/SDXL safetensors pipeline; it
+never downloads models. Supply `--model`, a new `--output` directory, and exactly
+one of `--prompt` or `--suite`. Optional `--negative-prompt` must be a nonblank
+string (default: omitted / Python `None`). `--guidance-scale` must be finite and
+within 1..15 inclusive (default: 7.5). Both controls are forwarded unchanged to
+the pipeline and recorded in manifest `settings`; frozen suite bytes, positive
+prompts, and seeds are unchanged. Outputs remain raw pretrained PNGs, not
+validated sprites or quality acceptance.
+
 ## Dataset and rights input contract
 
 Use separate local imagefolder roots, e.g. `data/approved/train/` and

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import time
@@ -61,7 +62,13 @@ def model_manifest(path):
 
 def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, steps=20,
            width=None, height=None, variant=None, device="cuda", cpu_offload=False,
-           model_id=None, revision=None):
+           model_id=None, revision=None, negative_prompt=None, guidance_scale=7.5):
+    if negative_prompt is not None and (not isinstance(negative_prompt, str) or
+                                        not negative_prompt.strip()):
+        raise ValueError("negative_prompt must be None or a nonblank string")
+    if (type(guidance_scale) not in (int, float) or not 1 <= guidance_scale <= 15 or
+            not math.isfinite(guidance_scale)):
+        raise ValueError("guidance_scale must be a finite number from 1..15")
     if type(max_cases) is not int or not 1 <= max_cases <= 4:
         raise ValueError("max_cases must be 1..4")
     if type(steps) is not int or not 1 <= steps <= 40:
@@ -105,7 +112,8 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
               "settings": {"steps": steps, "width": width, "height": height,
                            "max_cases": max_cases, "dtype": "float16", "device": device,
                            "variant": variant, "model_cpu_offload": cpu_offload,
-                           "guidance_scale": 7.5, "num_images_per_prompt": 1},
+                           "negative_prompt": negative_prompt,
+                           "guidance_scale": guidance_scale, "num_images_per_prompt": 1},
               "runtime": {"torch": torch.__version__, "diffusers": diffusers.__version__,
                           "hip": torch.version.hip, "cuda": torch.version.cuda,
                           "gpu": torch.cuda.get_device_name(0),
@@ -124,7 +132,8 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
         with torch.inference_mode():
             image = pipeline(prompt=case["prompt"], generator=torch.Generator(device="cuda").manual_seed(case["seed"]),
                              num_inference_steps=steps, width=width, height=height,
-                             guidance_scale=7.5, num_images_per_prompt=1).images[0]
+                             negative_prompt=negative_prompt, guidance_scale=guidance_scale,
+                             num_images_per_prompt=1).images[0]
         torch.cuda.synchronize()
         duration = time.monotonic() - started
         if "error" not in memory:
@@ -153,6 +162,9 @@ def main():
     inputs.add_argument("--prompt")
     for name, default in (("seed", 1234), ("max-cases", 4), ("steps", 20), ("width", None), ("height", None)):
         parser.add_argument(f"--{name}", type=int, default=default)
+    parser.add_argument("--negative-prompt", help="nonblank negative prompt; omitted by default")
+    parser.add_argument("--guidance-scale", type=float, default=7.5,
+                        help="finite guidance scale from 1..15 (default: 7.5)")
     parser.add_argument("--variant", choices=("fp16",))
     parser.add_argument("--device", choices=("cuda",), default="cuda", help="CUDA or ROCm; GPU 0 only")
     parser.add_argument("--cpu-offload", action="store_true")
