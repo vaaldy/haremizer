@@ -235,7 +235,12 @@ row plus UI overhead). A valid export need not fit a short terminal split.
 
 `sample.py` samples only a locally supplied SD1/SDXL safetensors pipeline; it
 never downloads models. Supply `--model`, a new `--output` directory, and exactly
-one of `--prompt` or `--suite`. Optional `--negative-prompt` must be a nonblank
+one of `--prompt` or `--suite`. Omitted dimensions now default to **768×768 for
+SDXL**, the exercised local inference size, and 512×512 for SD1. Explicit sizes
+remain supported for other environments; the observed 1024px route stays
+operationally disabled on this machine after its GPU hang. A safer default is
+not a guarantee against instability in this unsupported runtime.
+Optional `--negative-prompt` must be a nonblank
 string (default: omitted / Python `None`). `--guidance-scale` must be finite and
 within 1..15 inclusive (default: 7.5). Both controls are forwarded unchanged to
 the pipeline and recorded in manifest `settings`; frozen suite bytes, positive

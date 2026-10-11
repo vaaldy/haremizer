@@ -113,7 +113,10 @@ class SamplingTests(unittest.TestCase):
         self.assertNotIn("variant", self.loader.from_pretrained.call_args.kwargs)
         self.assertEqual([c.kwargs["generator"] for c in self.pipeline.call_args_list],
                          [("cuda", 1701), ("cuda", 2939)])
-        self.assertEqual([r["width"] for r in report["records"]], [1024, 1024])
+        self.assertEqual([r["width"] for r in report["records"]], [768, 768])
+        self.assertEqual([r["height"] for r in report["records"]], [768, 768])
+        self.assertEqual(report["settings"]["width"], 768)
+        self.assertEqual(report["settings"]["height"], 768)
         self.assertEqual(report["suite_sha256"], hashlib.sha256(SUITE.read_bytes()).hexdigest())
         self.assertEqual(report["suite"]["frozen_json"], SUITE.read_text())
         cases = json.loads(SUITE.read_text())["cases"][:2]

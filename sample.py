@@ -114,7 +114,7 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
     if lora_path is not None and lora_path.is_relative_to(output):
         raise ValueError("output directory must not contain the lora source")
     identity = model_manifest(model)
-    default_size = 1024 if identity["class"] == "StableDiffusionXLPipeline" else 512
+    default_size = 768 if identity["class"] == "StableDiffusionXLPipeline" else 512
     width, height = default_size if width is None else width, default_size if height is None else height
     if any(type(n) is not int or not 64 <= n <= 1024 or n % 64 for n in (width, height)):
         raise ValueError("dimensions must be multiples of 64 from 64..1024")
