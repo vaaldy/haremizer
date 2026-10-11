@@ -132,6 +132,71 @@ the pipeline and recorded in manifest `settings`; frozen suite bytes, positive
 prompts, and seeds are unchanged. Outputs remain raw pretrained PNGs, not
 validated sprites or quality acceptance.
 
+## Bounded SDXL attention-LoRA runtime smoke
+
+`smoke_sdxl.py` is a separate **1–2 total optimizer-step plumbing smoke**, not the
+legacy SD1 adapter, a quality trainer, promotion, or synthetic-feedback loop.
+It records the existing broad user authorization and truthful `machine:sol`
+review, never invents human approval or calls the legacy preparation gates.
+GPU execution is **pending**; CPU preflight/API tests are not training evidence.
+Separate 1024px pretrained inference hung after 28 denoising steps (exit 134);
+the exact failing post-denoising operation was not instrumented. Earlier 768px
+inference passed. Neither proves training stability.
+This smoke stays at 512px; the parent must separately reprobe before execution,
+with no automatic scaling/retry. Native 64px pretrained samples were not viable
+portraits and are not training data or a quality pass.
+
+Supply `--request` JSON and a new `--output` directory. Paths are absolute or
+relative to the request file. Example shape (replace all evidence placeholders
+with real local paths/hashes, captions, sources, and attribution):
+
+```json
+{
+  "model": {"path": "../models/hub/models--cagliostrolab--animagine-xl-4.0/snapshots/2b7c1b397761bf5bd3cc42e5b39ec99314a75a96", "id": "cagliostrolab/animagine-xl-4.0", "revision": "2b7c1b397761bf5bd3cc42e5b39ec99314a75a96"},
+  "config": {"steps": 2, "batch_size": 1, "resolution": 512, "rank": 4, "seed": 1234, "learning_rate": 0.0001, "gradient_clip": 1.0},
+  "reviewed_by": "machine:sol", "declared_smoke_only": true,
+  "authorization": {"user_authorized": true, "record": "User authorized bounded autonomous local training and process-local HSA_OVERRIDE_GFX_VERSION=10.3.0; this records broad authorization, not human artwork review."},
+  "examples": [{"path": "../data/example.png", "sha256": "REPLACE_WITH_IMAGE_SHA256", "caption": "REPLACE_WITH_REVIEWED_CAPTION", "source_url": "https://REPLACE_WITH_REAL_SOURCE", "license": "CC-BY-4.0", "credit": "REPLACE_WITH_ACTUAL_ATTRIBUTION", "source_page": {"path": "../data/source.html", "sha256": "REPLACE_WITH_SOURCE_PAGE_SHA256"}}]
+}
+```
+
+Only 1–2 supplied native 64×64 PNGs and CC-BY-4.0/CC0-1.0 declarations are
+accepted; hashes bind source PNG and local source-page bytes. This validates
+machine declarations, not legal truth or aesthetics. Model pinning uses the
+same HF cache convention below, or a 64-hex content digest. ML imports are lazy,
+loads are local-only safetensors without remote code, and offline flags are set;
+this is not an OS network sandbox. The isolated Python 3.12 runtime must match
+torch 2.11.0+rocm7.2, diffusers 0.41.0, transformers 5.19.0, peft 0.21.2 and
+accelerate 1.15.0. No installs/downloads, CPU training fallback, or retries.
+
+Original PNG/alpha bytes are retained; cached RGB input explicitly records
+64→512 nearest resizing and white alpha flattening. Dual SDXL conditioning and
+fp32 VAE posterior-mode scaled latents are cached, then encoders/VAE are released
+before UNet backward. Frozen fp16 UNet, fp32 rank-4 attention adapters, AdamW,
+checkpointing, fp16 autocast/GradScaler, finite checks, exhaustive frozen-parameter
+hashes, and a nonzero update check test plumbing only. The stop threshold is
+**11 GiB peak allocated**, checked between phases/operations, not a hard allocator
+cap; peak reserved/device usage are also recorded. CPU save/reload verification
+uses the actual diffusers API, deleting the old adapter and temporarily upcasting
+the CPU base to preserve fp32 adapter bytes (extra host memory required).
+`outcome.json` atomically checkpoints phase boundaries, training start and each
+completed optimizer step, plus hashes, versions, memory, timing and failures.
+Native crash or external timeout can leave `status: running`; that is not
+success and the coordinator must record process termination separately.
+
+Parent/coordinator must wrap the entire process in a **900-second timeout**:
+
+```sh
+timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
+  /home/valdy/.cache/haremizer-runtime/bin/python smoke_sdxl.py \
+  --request artifacts/sdxl-smoke-request.json --output artifacts/sdxl-smoke-01
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_sdxl_smoke
+# Optional CPU-only real save/delete/reload API check, not a model/GPU smoke:
+PYTHONDONTWRITEBYTECODE=1 SDXL_SMOKE_CPU_API_TEST=1 \
+  /home/valdy/.cache/haremizer-runtime/bin/python -m unittest -v \
+  test_sdxl_smoke.SmokePreflightTests.test_real_diffusers_save_delete_reload_cpu
+```
+
 ## Dataset and rights input contract
 
 Use separate local imagefolder roots, e.g. `data/approved/train/` and
