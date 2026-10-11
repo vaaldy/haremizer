@@ -122,6 +122,35 @@ Contact sheets use integer nearest-neighbor scaling with transparent padding for
 mixed native sizes, never stretch a 48 portrait to match a 64 portrait. Sheets
 are viewing aids, not format candidates or quality verdicts.
 
+## Explicit CPU grid recovery
+
+`recovery.py` postprocesses a local raw single-frame square PNG (64..1024px,
+<=16 MiB, verified before decoding). Pillow must already be installed. Python API:
+`recover(source, output, background, size=64, tolerance=16, colors=32)`; explicit
+RGB background is required, never inferred from borders. Example:
+
+```sh
+python recovery.py --source /local/raw/case-01.png --output /local/recovery/case-01 \
+  --background 255 255 255 --size 64 --tolerance 16 --colors 32
+```
+
+Output must be a new directory outside the input directory, separate from any
+term-chan export directory; even existing empty directories are rejected. The
+four-connected edge flood fill removes only pixels within RGB Euclidean tolerance
+0..64 of the explicit key (and traverses existing transparent pixels). Enclosed
+same-key regions stay opaque; boundary-connected same-color foreground can be
+removed incorrectly. Original composition is directly BOX-resized to 48 or 64,
+alpha binarized at >=128, and opaque RGB MEDIANCUT-quantized without dithering to
+2..62 colors. Hidden transparent RGB is zeroed. `source.png` retains exact input
+bytes; `manifest.json` records source/output hashes, all controls, and factual
+`images.validate_png` metrics. All-opaque/all-transparent results are rejected;
+failed final validation can leave the source copy and rejected output, without a
+success manifest. Use another new directory for a retry.
+
+This is CPU postprocessing, **not native-layout diffusion, visual quality
+acceptance, or sprite export**. No eye/face templates or automatic training feed
+are used. Format validity does not make a recovered portrait an accepted sprite.
+
 ## Local pretrained sampling controls
 
 `sample.py` samples only a locally supplied SD1/SDXL safetensors pipeline; it
@@ -144,7 +173,9 @@ base model and adapter source; manifest `lora` records supplied path, byte count
 and SHA256 (or `null` without an adapter). Inference uses the fp16 pipeline;
 normal inference dtype casting is distinct from the smoke's exact fp32 CPU
 training save/reload verification. Sampling never starts training or promotes
-an adapter. GPU inference with the runtime-smoke adapter is still pending.
+an adapter. GPU inference with the runtime-smoke adapter passed four matched
+cases in `artifacts/smoke-lora-suite-01` (~6.4 GB peak allocated); this is runtime
+evidence, not quality improvement or an accepted corpus.
 
 ## Bounded SDXL attention-LoRA runtime smoke
 
@@ -158,7 +189,9 @@ adapter update, identical exhaustive frozen-UNet hashes, and exact fp32 CPU
 adapter reload through diffusers. It took about 91 seconds wall time (86.6 seconds
 recorded smoke duration), with peak allocated memory 5.66 GB. This is runtime
 plumbing evidence only, not a quality corpus, accepted sprite, or promotion.
-GPU inference with the trained smoke adapter remains **pending**. Attempt 01
+GPU inference with the trained smoke adapter passed four matched cases in
+`artifacts/smoke-lora-suite-01` (~6.4 GB peak allocated), with no demonstrated
+quality improvement or accepted corpus. Attempt 01
 failed before training on the optional `amdsmi` device-memory metric; unavailable
 metrics are now recorded nonfatally, not as zero.
 Separate 1024px pretrained inference hung after 28 denoising steps (exit 134);
@@ -368,9 +401,10 @@ usual non-nearest resize default. No unverified interpolation flag is guessed.
 
 Only explicit alpha flattening onto the recorded RGB background is supported:
 upstream RGB training cannot preserve transparency. Approval must cover that
-loss and nearest-neighbor scaling; neither final native-layout generation nor
-transparent output recovery is implemented. `mixed_precision` must be `no` or
-explicitly approved `fp16`; batch 1, accumulation 4, rank/steps/resolution from
+loss and nearest-neighbor scaling; final native-layout generation is not
+implemented. Explicit CPU transparent output postprocessing is separate (above).
+`mixed_precision` must be `no` or explicitly approved `fp16`; batch 1,
+accumulation 4, rank/steps/resolution from
 preparation, fixed AdamW learning-rate/scheduler arguments, and no TF32 flag.
 
 Local models require either a 64-hex revision equal to
