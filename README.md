@@ -252,6 +252,48 @@ PYTHONDONTWRITEBYTECODE=1 SDXL_SMOKE_CPU_API_TEST=1 \
   test_sdxl_smoke.SmokePreflightTests.test_real_diffusers_save_delete_reload_cpu
 ```
 
+### Explicit experimental style-learning pilot
+
+The same script additionally supports one bounded **experimental 100-step style
+pilot**, only with CLI `--pilot` (Python `preflight(..., pilot=True)` or
+`run(..., pilot=True)`; default `pilot=False`). Default smoke request/CLI contracts
+remain unchanged: 1–2 steps, 1–2 examples, `declared_smoke_only: true`, and no
+heldout keys. Pilot requests instead require `declared_smoke_only: false`, exactly
+100 steps, 4–16 training `examples`, and 2–16 `heldout_examples`. All other config
+values remain fixed: rank 4, 512px, batch 1, seed 1234, learning rate 1e-4 and
+clip 1. Every example in either split has the existing exact keys plus a nonblank
+`identity_group`. At least four distinct training groups and two distinct heldout
+groups are required; multiple distinct expression images within a training group
+are allowed. Groups must not intersect across splits. Group labels are declarations,
+not automatic proof of identity independence or source diversity.
+
+Both splits undergo local native 64×64 single-frame PNG, byte-hash, source-page
+hash, caption and CC-BY-4.0/CC0-1.0 declaration validation before ML imports.
+Duplicate image bytes or canonical RGBA pixels are rejected across all pilot
+inputs, including different PNG encodings and hidden RGB under zero alpha.
+`outcome.json` keeps training records in `inputs` only; `heldout_inputs` and
+`heldout_count` record separate heldout provenance/hashes. Heldout captions and
+pixels never enter training conditioning or caches. Each run starts from the fresh
+pinned base, with the same finite/frozen/update/checkpoint/memory checks and atomic
+progress as the smoke; no incremental resume, automatic evaluation, early-best
+selection, sweep, retry, scaling, promotion or synthetic feedback is added.
+
+Successful execution reports `pilot_completed_unreviewed`, **not** `smoke_passed`
+or quality acceptance; `quality_assessed`, `promotion` and `synthetic_feedback`
+remain false. The current draft `artifacts/style-pilot-request-01.json` contains
+six training and two heldout identities from the same pebonius source, with
+machine-reviewed rights and adult-appearing descriptions (canonical ages not
+supplied). It is a small learning experiment, **not an accepted quality corpus,
+production training or a quality claim**. GPU execution of this new pilot remains
+pending. Parent/coordinator must bound the entire process to 900 seconds; 1024px
+remains disabled, with no automatic extension:
+
+```sh
+timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
+  /home/valdy/.cache/haremizer-runtime/bin/python smoke_sdxl.py --pilot \
+  --request artifacts/style-pilot-request-01.json --output artifacts/style-pilot-01
+```
+
 ## Dataset and rights input contract
 
 Use separate local imagefolder roots, e.g. `data/approved/train/` and

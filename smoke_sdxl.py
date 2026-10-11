@@ -1,4 +1,4 @@
-"""Local GPU-only SDXL attention-LoRA plumbing smoke; never quality acceptance."""
+"""Local GPU-only bounded SDXL attention-LoRA smoke/style pilot; never quality acceptance."""
 from __future__ import annotations
 
 import argparse
@@ -46,15 +46,20 @@ def keys(value, expected, label):
         raise ValueError(f"{label}: expected exactly {sorted(expected)}")
 
 
-def preflight(request_path, output):
+def preflight(request_path, output, *, pilot=False):
     """Validate local declarations and byte identities without importing ML packages."""
+    if type(pilot) is not bool:
+        raise ValueError("pilot must be an explicit boolean")
     request_path, output = Path(request_path).resolve(), Path(output).resolve()
     raw = request_path.read_bytes()
     request = json.loads(raw)
-    keys(request, {"model", "config", "examples", "reviewed_by", "declared_smoke_only",
-                   "authorization"}, "request")
-    if request["reviewed_by"] != "machine:sol" or request["declared_smoke_only"] is not True:
-        raise ValueError("truthful machine:sol review and declared_smoke_only=true required")
+    request_keys = {"model", "config", "examples", "reviewed_by", "declared_smoke_only",
+                    "authorization"}
+    if pilot:
+        request_keys.add("heldout_examples")
+    keys(request, request_keys, "request")
+    if request["reviewed_by"] != "machine:sol" or request["declared_smoke_only"] is not (not pilot):
+        raise ValueError(f"truthful machine:sol review and declared_smoke_only={not pilot} required")
     authorization = request["authorization"]
     keys(authorization, {"user_authorized", "record"}, "authorization")
     if authorization["user_authorized"] is not True or not nonempty(authorization["record"]):
@@ -64,8 +69,10 @@ def preflight(request_path, output):
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
            config[k] != v for k, v in CONFIG.items()):
         raise ValueError("smoke config must use the fixed batch/resolution/rank/seed/lr/clip")
-    if type(config["steps"]) is not int or not 1 <= config["steps"] <= 2:
-        raise ValueError("steps must be 1..2 total optimizer steps")
+    if type(config["steps"]) is not int or not (
+            config["steps"] == 100 if pilot else 1 <= config["steps"] <= 2):
+        raise ValueError("steps must be exactly 100" if pilot else
+                         "steps must be 1..2 total optimizer steps")
     spec = request["model"]
     keys(spec, {"path", "id", "revision"}, "model")
     if (not nonempty(spec["path"]) or not isinstance(spec["id"], str) or
@@ -103,35 +110,61 @@ def preflight(request_path, output):
             raise ValueError("model path must match pinned HF cache id/revision convention")
     elif canonical_digest(hashes) != revision:
         raise ValueError("64-hex model content revision mismatch")
-    examples = request["examples"]
-    if not isinstance(examples, list) or not 1 <= len(examples) <= 2:
-        raise ValueError("supply 1..2 local PNG examples")
-    records, seen = [], set()
+    splits = [("examples", 4 if pilot else 1, 16 if pilot else 2)]
+    if pilot:
+        splits.append(("heldout_examples", 2, 16))
+    validated, seen, seen_pixels = {}, set(), set()
     from PIL import Image
-    for row in examples:
-        keys(row, {"path", "sha256", "caption", "source_url", "license", "credit",
-                   "source_page"}, "example")
-        source = row["source_page"]
-        keys(source, {"path", "sha256"}, "source_page")
-        url = urlparse(row["source_url"] if isinstance(row["source_url"], str) else "")
-        if (not nonempty(row["caption"]) or not nonempty(row["credit"]) or
-                row["license"] not in ("CC-BY-4.0", "CC0-1.0") or
-                url.scheme not in ("http", "https") or not url.netloc):
-            raise ValueError("nonblank caption/credit, source URL and CC-BY-4.0 or CC0-1.0 required")
-        image, page = local(row["path"]), local(source["path"])
-        for path, expected in ((image, row["sha256"]), (page, source["sha256"])):
-            if not path.is_file() or file_hash(path) != expected:
-                raise ValueError(f"missing input or SHA256 mismatch: {path}")
-            if path.is_relative_to(output):
-                raise ValueError("output must not contain inputs")
-        if row["sha256"] in seen:
-            raise ValueError("duplicate example")
-        seen.add(row["sha256"])
-        with Image.open(image) as png:
-            if png.format != "PNG" or png.size != (64, 64) or getattr(png, "n_frames", 1) != 1:
-                raise ValueError("single-frame native 64x64 PNG required")
-            png.load()
-        records.append({**row, "path": str(image), "source_page": {**source, "path": str(page)}})
+    for name, minimum, maximum in splits:
+        examples = request[name]
+        if not isinstance(examples, list) or not minimum <= len(examples) <= maximum:
+            raise ValueError(f"{name}: supply {minimum}..{maximum} local PNG examples")
+        records = []
+        for row in examples:
+            example_keys = {"path", "sha256", "caption", "source_url", "license", "credit",
+                            "source_page"}
+            if pilot:
+                example_keys.add("identity_group")
+            keys(row, example_keys, "example")
+            if pilot and not nonempty(row["identity_group"]):
+                raise ValueError("nonblank identity_group required")
+            source = row["source_page"]
+            keys(source, {"path", "sha256"}, "source_page")
+            url = urlparse(row["source_url"] if isinstance(row["source_url"], str) else "")
+            if (not nonempty(row["caption"]) or not nonempty(row["credit"]) or
+                    row["license"] not in ("CC-BY-4.0", "CC0-1.0") or
+                    url.scheme not in ("http", "https") or not url.netloc):
+                raise ValueError("nonblank caption/credit, source URL and CC-BY-4.0 or CC0-1.0 required")
+            image, page = local(row["path"]), local(source["path"])
+            for path, expected in ((image, row["sha256"]), (page, source["sha256"])):
+                if not path.is_file() or file_hash(path) != expected:
+                    raise ValueError(f"missing input or SHA256 mismatch: {path}")
+                if path.is_relative_to(output):
+                    raise ValueError("output must not contain inputs")
+            if row["sha256"] in seen:
+                raise ValueError("duplicate example")
+            seen.add(row["sha256"])
+            with Image.open(image) as png:
+                if png.format != "PNG" or png.size != (64, 64) or getattr(png, "n_frames", 1) != 1:
+                    raise ValueError("single-frame native 64x64 PNG required")
+                png.load()
+                if pilot:
+                    data = png.convert("RGBA").tobytes()
+                    canonical = bytes(channel for index in range(0, len(data), 4)
+                                      for channel in (data[index:index + 4] if data[index + 3]
+                                                      else b"\0\0\0\0"))
+                    pixel_hash = hashlib.sha256(b"64x64:" + canonical).hexdigest()
+                    if pixel_hash in seen_pixels:
+                        raise ValueError("duplicate canonical pixels across pilot inputs")
+                    seen_pixels.add(pixel_hash)
+            records.append({**row, "path": str(image), "source_page": {**source, "path": str(page)},
+                            **({"pixel_sha256": pixel_hash} if pilot else {})})
+        validated[name] = records
+        if pilot and len({row["identity_group"] for row in records}) < minimum:
+            raise ValueError(f"{name}: require at least {minimum} distinct identity groups")
+    if pilot and ({row["identity_group"] for row in validated["examples"]} &
+                  {row["identity_group"] for row in validated["heldout_examples"]}):
+        raise ValueError("identity_group intersection across splits")
     if request_path.is_relative_to(output):
         raise ValueError("output must not contain request")
     override = os.environ.get("HSA_OVERRIDE_GFX_VERSION")
@@ -141,7 +174,12 @@ def preflight(request_path, output):
             "config_sha256": canonical_digest(config), "model": {**spec, "path": str(model),
             "manifest": identity, "file_sha256": hashes,
             "provenance_scope": "HF path asserts revision; content hashes bind local bytes, not upstream authenticity"},
-            "inputs": records, "script_sha256": file_hash(__file__),
+            "inputs": validated["examples"],
+            **({"heldout_inputs": validated["heldout_examples"],
+                "heldout_count": len(validated["heldout_examples"]),
+                "holdout_scope": "declared identity groups, not independently proven identities"}
+               if pilot else {}),
+            "script_sha256": file_hash(__file__),
             "runtime_override": override,
             "override_scope": "existing process-local environment only; unsupported workaround, not native support",
             "quality_assessed": False,
@@ -375,9 +413,9 @@ def train(report, output, persist):
     memory()
 
 
-def run(request, output):
+def run(request, output, *, pilot=False):
     output = Path(output).resolve()
-    report = preflight(request, output)
+    report = preflight(request, output, pilot=pilot)
     output.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
     report.update(status="running", training_started=False)
@@ -402,7 +440,7 @@ def run(request, output):
         report["runtime"]["offline"] = True
         persist()
         train(report, output, persist)
-        report.update(status="smoke_passed", phase="completed")
+        report.update(status="pilot_completed_unreviewed" if pilot else "smoke_passed", phase="completed")
     except BaseException as error:
         report.update(status="failed", error=f"{type(error).__name__}: {error}")
         # Best effort only: never hide the original OOM/crash/nonfinite error.
@@ -426,9 +464,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--pilot", action="store_true", help="explicit experimental 100-step style pilot")
     args = parser.parse_args()
     try:
-        report = run(args.request, args.output)
+        report = run(args.request, args.output, pilot=args.pilot)
     except (ValueError, RuntimeError, OSError, ImportError) as error:
         parser.exit(2, f"{type(error).__name__}: {error}\n")
     print(json.dumps({"status": report["status"], "quality_assessed": False}))

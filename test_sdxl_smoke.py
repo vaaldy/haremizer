@@ -197,6 +197,152 @@ class SmokePreflightTests(unittest.TestCase):
             trainer.assert_not_called()
         self.assertFalse(json.loads((self.output / "outcome.json").read_text())["training_started"])
 
+    def pilot_fixture(self, train_count=4, heldout_count=2):
+        request = copy.deepcopy(self.request)
+        request.update(declared_smoke_only=False, heldout_examples=[])
+        request["config"]["steps"] = 100
+        request["examples"] = []
+        for index in range(train_count + heldout_count):
+            image = self.root / f"pilot-{index}.png"
+            png = Image.new("RGBA", (64, 64), (index + 1, 20, 30, 255))
+            png.putpixel((0, 0), (10, 20, 30, 0))
+            png.save(image)
+            row = {**copy.deepcopy(self.request["examples"][0]), "path": str(image),
+                   "sha256": smoke.file_hash(image), "identity_group": f"identity-{index}"}
+            request["examples" if index < train_count else "heldout_examples"].append(row)
+        return request
+
+    def test_pilot_selector_requires_explicit_boolean(self):
+        self.write(self.pilot_fixture())
+        for value in (None, 1, 0, "false", "true"):
+            with self.subTest(pilot=value), self.assertRaisesRegex(ValueError, "explicit boolean"):
+                smoke.preflight(self.request_path, self.output, pilot=value)
+        self.assertFalse(self.output.exists())
+
+    def test_pilot_preflight_no_ml_and_train_only_inputs(self):
+        import builtins
+        request = self.pilot_fixture()
+        self.write(request)
+        original = builtins.__import__
+
+        def guard(name, *args, **kwargs):
+            if name.split(".")[0] in {"torch", "diffusers", "transformers", "peft", "accelerate"}:
+                raise AssertionError("preflight imported ML")
+            return original(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=guard):
+            report = smoke.preflight(self.request_path, self.output, pilot=True)
+        self.assertEqual(len(report["inputs"]), 4)
+        self.assertEqual(report["heldout_count"], 2)
+        self.assertEqual(len({r["pixel_sha256"] for r in report["inputs"] + report["heldout_inputs"]}), 6)
+
+        def trainer(report, output, persist):
+            self.assertEqual([r["sha256"] for r in report["inputs"]],
+                             [r["sha256"] for r in request["examples"]])
+            self.assertTrue({r["path"] for r in report["inputs"]}.isdisjoint(
+                {r["path"] for r in report["heldout_inputs"]}))
+            self.assertTrue(all("cached_input" not in r for r in report["heldout_inputs"]))
+
+        with patch.object(smoke.importlib.metadata, "version", side_effect=smoke.VERSIONS.__getitem__), \
+                patch.object(smoke.sys, "version_info", (3, 12)), \
+                patch.object(smoke, "train", side_effect=trainer) as mock:
+            result = smoke.run(self.request_path, self.output, pilot=True)
+        mock.assert_called_once()
+        self.assertEqual(result["status"], "pilot_completed_unreviewed")
+        for key in ("quality_assessed", "promotion", "synthetic_feedback"):
+            self.assertIs(result[key], False)
+
+    def test_pilot_caps_groups_and_contracts_before_trainer(self):
+        cases = []
+        base = self.pilot_fixture()
+
+        def case(label, mutate):
+            request = copy.deepcopy(base)
+            mutate(request)
+            cases.append((label, request))
+
+        for steps in (2, 99, 101, True):
+            case(f"steps {steps}", lambda r, n=steps: r["config"].update(steps=n))
+        for split, minimum in (("examples", 4), ("heldout_examples", 2)):
+            case(f"{split} too few", lambda r, k=split, n=minimum: r.update({k: r[k][:n-1]}))
+            case(f"{split} too many", lambda r, k=split: r.update({k: r[k] * 17}))
+            case(f"{split} blank group", lambda r, k=split: r[k][0].update(identity_group=" "))
+            case(f"{split} too few groups", lambda r, k=split: r[k][0].update(
+                identity_group=r[k][1]["identity_group"]))
+            for key, value in (("sha256", "0" * 64), ("license", "unknown"), ("caption", " ")):
+                case(f"{split} {key}", lambda r, k=split, a=key, v=value: r[k][0].update({a: v}))
+            case(f"{split} source hash", lambda r, k=split: r[k][0]["source_page"].update(sha256="0" * 64))
+        case("intersection", lambda r: r["heldout_examples"][0].update(
+            identity_group=r["examples"][0]["identity_group"]))
+        case("byte duplicate", lambda r: r["heldout_examples"][0].update(
+            path=r["examples"][0]["path"], sha256=r["examples"][0]["sha256"]))
+        case("smoke declaration", lambda r: r.update(declared_smoke_only=True))
+        case("unknown key", lambda r: r.update(resume=True))
+        case("unknown example key", lambda r: r["examples"][0].update(extra=True))
+        case("missing heldout", lambda r: r.pop("heldout_examples"))
+        with patch.object(smoke, "train") as trainer:
+            for label, request in cases:
+                with self.subTest(label=label):
+                    self.write(request)
+                    with self.assertRaises(ValueError):
+                        smoke.run(self.request_path, self.output, pilot=True)
+                    self.assertFalse(self.output.exists())
+            trainer.assert_not_called()
+        self.write(base)
+        with self.assertRaises(ValueError):
+            smoke.preflight(self.request_path, self.output)  # no implicit pilot
+        self.write()
+        with self.assertRaises(ValueError):
+            smoke.preflight(self.request_path, self.output, pilot=True)
+
+    def test_pilot_canonical_duplicates_reencoding_and_hidden_rgb(self):
+        for hidden_rgb in (False, True):
+            with self.subTest(hidden_rgb=hidden_rgb):
+                request = self.pilot_fixture()
+                source = Path(request["examples"][0]["path"])
+                target = Path(request["heldout_examples"][0]["path"])
+                with Image.open(source) as png:
+                    if hidden_rgb:
+                        png.putpixel((0, 0), (99, 88, 77, 0))
+                    png.save(target, compress_level=0)
+                request["heldout_examples"][0]["sha256"] = smoke.file_hash(target)
+                self.assertNotEqual(smoke.file_hash(source), smoke.file_hash(target))
+                self.write(request)
+                with self.assertRaisesRegex(ValueError, "canonical pixels"):
+                    smoke.preflight(self.request_path, self.output, pilot=True)
+
+    def test_pilot_maximum_split_counts_and_heldout_native_size(self):
+        request = self.pilot_fixture(train_count=16, heldout_count=16)
+        self.write(request)
+        report = smoke.preflight(self.request_path, self.output, pilot=True)
+        self.assertEqual(len(report["inputs"]), 16)
+        self.assertEqual(report["heldout_count"], 16)
+        heldout = request["heldout_examples"][0]
+        Image.new("RGBA", (48, 48)).save(heldout["path"])
+        heldout["sha256"] = smoke.file_hash(heldout["path"])
+        self.write(request)
+        with self.assertRaisesRegex(ValueError, "64x64"):
+            smoke.preflight(self.request_path, self.output, pilot=True)
+
+    def test_pilot_cli_forwards_flag_and_prints_actual_status(self):
+        import io
+        with patch.object(smoke.sys, "argv", ["smoke_sdxl.py", "--pilot", "--request",
+                                              str(self.request_path), "--output", str(self.output)]), \
+                patch.object(smoke, "run", return_value={"status": "pilot_completed_unreviewed"}) as run, \
+                patch.object(smoke.sys, "stdout", new_callable=io.StringIO) as stdout:
+            smoke.main()
+            self.assertEqual(json.loads(stdout.getvalue()),
+                             {"status": "pilot_completed_unreviewed", "quality_assessed": False})
+        run.assert_called_once_with(self.request_path, self.output, pilot=True)
+
+    def test_pilot_distinct_expression_pixels_same_training_group_allowed(self):
+        request = self.pilot_fixture(train_count=5)
+        request["examples"][-1]["identity_group"] = request["examples"][0]["identity_group"]
+        self.write(request)
+        report = smoke.preflight(self.request_path, self.output, pilot=True)
+        self.assertEqual(len(report["inputs"]), 5)
+        self.assertEqual(len({r["identity_group"] for r in report["inputs"]}), 4)
+
     @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU API test")
     def test_real_diffusers_save_delete_reload_cpu(self):
         import torch
