@@ -151,6 +151,46 @@ This is CPU postprocessing, **not native-layout diffusion, visual quality
 acceptance, or sprite export**. No eye/face templates or automatic training feed
 are used. Format validity does not make a recovered portrait an accepted sprite.
 
+## Annotated local blink frame testbed
+
+`blink.py` requires a **per-generated-portrait eye annotation**, not an autonomous
+landmark detector. It is a limited frame-editing testbed, **not a trained blink**,
+closed-eye semantic pass, quality acceptance, promotion, or sprite export. The
+user/main reviewer owns actual eye regions, closed-lid edits and visual review;
+changing arbitrary skin pixels does not establish a blink. No face skeleton,
+generic eye template, filtering, interpolation or cropping is used.
+
+API: `blink(source, annotation, output)`; CLI:
+
+```sh
+python blink.py --source /local/portraits/portrait.png \
+  --annotation /local/eye-annotation.json --output /local/blink-frame
+```
+
+Annotation JSON has exactly these keys (replace hash/regions/edits with actual
+portrait-specific evidence; `machine:sol` records machine, not human review):
+
+```json
+{"version":1,"reviewed_by":"machine:sol","source_sha256":"REPLACE_WITH_FULL_SOURCE_BYTE_SHA256","eye_regions":[{"x":2,"y":2,"width":3,"height":2}],"edits":[{"x":2,"y":2,"color":"#506478"}]}
+```
+
+The hash must match exact source PNG bytes before editing. Source must satisfy
+`images.py`'s 48/64 single-frame, mixed binary-alpha, <=62-color contract.
+One or two in-bounds rectangles use exact integers (no booleans), width <=16,
+height <=10, union <=128 pixels. Edits are nonempty, unique integer coordinates
+inside those regions on opaque source pixels; `#RRGGBB` colors must already exist
+in the opaque source palette. At least one and at most 128 pixels must actually
+change. Only specified pixels change; the full alpha channel and every RGBA pixel
+outside the declared regions are explicitly checked after saving.
+
+Output must be a new directory outside the input image folder and must not
+contain/overwrite either input. It retains exact `source.png` and
+`annotation.json` bytes, writes `blink.png`, and records hashes, regions, counts,
+factual PNG metrics and preservation checks in `manifest.json` with
+`visual_quality_assessed: false`. Declared eye regions are not automatic detection.
+A failed save/validation may leave artifacts but no success manifest; retry in a
+new directory. Pillow is loaded lazily through `images.py`; no ML is invoked.
+
 ## Local pretrained sampling controls
 
 `sample.py` samples only a locally supplied SD1/SDXL safetensors pipeline; it
