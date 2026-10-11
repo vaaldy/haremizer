@@ -250,7 +250,10 @@ validated sprites or quality acceptance.
 Optional `--lora /local/path/pytorch_lora_weights.safetensors` and
 `--lora-sha256 FULL_LOWERCASE_64_HEX_SHA256` must be supplied together (Python
 keywords: `lora=None`, `lora_sha256=None`). The adapter must be a real nonempty
-local `.safetensors` file at most 64 MiB; its full byte hash is verified before ML
+local `.safetensors` file at most **256 MiB**; this bounded allowance covers the
+170.5 MB pretrained Pixel Art XL alternative as well as the 23.4 MB local
+runtime/pilot adapters. It is not permission for unrestricted checkpoint loads.
+Its full byte hash is verified before ML
 imports and again just before loading. No downloads, pickle fallback, fusion,
 or strength control are added. The standard diffusers local-only safetensors
 loader runs before GPU placement/CPU offload. Output must be new and outside the

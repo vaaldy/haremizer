@@ -12,6 +12,7 @@ import time
 from prepare import freeze_suite
 
 PIPELINES = ("StableDiffusionPipeline", "StableDiffusionXLPipeline")
+MAX_LORA_BYTES = 256 * 1024 * 1024
 COMPONENTS = {
     "diffusers": {"AutoencoderKL", "UNet2DConditionModel", "DDIMScheduler", "DDPMScheduler",
                   "PNDMScheduler", "LMSDiscreteScheduler", "EulerDiscreteScheduler",
@@ -69,14 +70,13 @@ def validate_lora(lora, lora_sha256):
             any(c not in "0123456789abcdef" for c in lora_sha256)):
         raise ValueError("lora_sha256 must be a full lowercase 64-hex SHA256")
     path = Path(lora).resolve()
-    limit = 64 * 1024 * 1024
     if (path.suffix != ".safetensors" or not path.is_file() or
-            not 0 < path.stat().st_size <= limit):
-        raise ValueError("lora must be a nonempty local safetensors file <=64 MiB")
+            not 0 < path.stat().st_size <= MAX_LORA_BYTES):
+        raise ValueError("lora must be a nonempty local safetensors file <=256 MiB")
     with path.open("rb") as file:
-        data = file.read(limit + 1)
-    if not 0 < len(data) <= limit or digest(data) != lora_sha256:
-        raise ValueError("lora bytes must be <=64 MiB and match lora_sha256")
+        data = file.read(MAX_LORA_BYTES + 1)
+    if not 0 < len(data) <= MAX_LORA_BYTES or digest(data) != lora_sha256:
+        raise ValueError("lora bytes must be <=256 MiB and match lora_sha256")
     return path, {"path": str(lora), "bytes": len(data), "sha256": lora_sha256}
 
 
@@ -200,7 +200,7 @@ def main():
     parser.add_argument("--cpu-offload", action="store_true")
     parser.add_argument("--model-id")
     parser.add_argument("--revision")
-    parser.add_argument("--lora", type=Path, help="local safetensors adapter <=64 MiB; requires --lora-sha256")
+    parser.add_argument("--lora", type=Path, help="local safetensors adapter <=256 MiB; requires --lora-sha256")
     parser.add_argument("--lora-sha256", help="full lowercase SHA256 of the supplied adapter")
     try:
         report = sample(**vars(parser.parse_args()))

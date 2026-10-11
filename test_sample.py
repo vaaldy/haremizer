@@ -160,7 +160,7 @@ class SamplingTests(unittest.TestCase):
         pickle.write_bytes(self.lora.read_bytes())
         oversized = self.root / "oversized.safetensors"
         with oversized.open("wb") as file:
-            file.truncate(64 * 1024 * 1024 + 1)
+            file.truncate(sample.MAX_LORA_BYTES + 1)
         invalid = [{"lora": self.lora}, {"lora_sha256": self.lora_sha256}] + [
             {"lora": self.lora, "lora_sha256": value}
             for value in ("", "a" * 63, "a" * 65, "A" * 64, "g" * 64, 123, "0" * 64)] + [
