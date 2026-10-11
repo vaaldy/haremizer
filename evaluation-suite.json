@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "purpose": "Frozen held-out descriptors; no semantic, quality, or diversity verdict is implemented.",
+  "cases": [
+    {
+      "id": "round-curly",
+      "prompt": "Pixel-art portrait of an adult anime woman, round face, warm brown skin, short black curls, amber eyes, joyful smile, green jacket, transparent background",
+      "seed": 1701
+    },
+    {
+      "id": "angular-braid",
+      "prompt": "Pixel-art portrait of an adult anime woman, angular face, light skin, long red side braid, blue eyes, serious expression, navy uniform, transparent background",
+      "seed": 2939
+    },
+    {
+      "id": "wide-silver",
+      "prompt": "Pixel-art portrait of an adult anime woman, wide face, deep brown skin, silver buzz cut, violet eyes, thoughtful expression, gold earrings, transparent background",
+      "seed": 4513
+    },
+    {
+      "id": "long-wavy",
+      "prompt": "Pixel-art portrait of an adult anime woman, long face, olive skin, shoulder-length wavy dark hair, green eyes, surprised expression, red scarf, transparent background",
+      "seed": 6271
+    }
+  ],
+  "target_layouts": [
+    {"size": 48, "composition": "Independently compose a centered frontal head-and-shoulders portrait at native 48 by 48 pixels; transparent margin."},
+    {"size": 64, "composition": "Independently compose a three-quarter bust portrait at native 64 by 64 pixels, including shoulders and clothing; transparent margin. Do not upscale the 48-pixel composition."}
+  ]
+}
