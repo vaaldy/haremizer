@@ -1,0 +1,7 @@
+/test/
+/.venv/
+__pycache__/
+/artifacts/
+/data/
+/models/
+/runs/
