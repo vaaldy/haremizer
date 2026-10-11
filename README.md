@@ -2,7 +2,9 @@
 
 Text-described anime pixel-art portraits: an independent repository inside
 term-chan. **Current milestone: pretrained SDXL baseline and a passed two-step
-GPU LoRA runtime smoke; no quality-trained model or accepted sprite yet.** Python 3.11+; Pillow for PNG
+GPU LoRA runtime smoke, localized annotated blink testbed, and lossless sprite
+export available; no fully automatic landmarks, quality-trained model or accepted
+sprite yet.** Python 3.11+; Pillow for PNG
 processing. GPU inference additionally needs the dedicated PyTorch/diffusers
 runtime. Source tools do not install packages or download models/data; separately
 user-authorized setup has populated the local runtime, model cache, and candidate
@@ -73,7 +75,8 @@ current user authorization policy for future reviewed training implementations.
 
 Missing: a curated quality training corpus, a quality-training SDXL pipeline,
 independent calibrated visual evaluation, accepted transparent native-grid
-portraits, localized blinking, and term-chan sprite export. A pinned base model,
+portraits, and fully automatic eye landmarks/semantic blinking. Local annotated
+blink editing and lossless term-chan export are available, not quality acceptance. A pinned base model,
 pretrained inference, and bounded GPU training smoke exist as described here;
 two optimizer steps do not prove sustained training stability. Nothing here declares
 learned quality as passing. Generated outputs must never be silently fed back
@@ -190,6 +193,43 @@ factual PNG metrics and preservation checks in `manifest.json` with
 `visual_quality_assessed: false`. Declared eye regions are not automatic detection.
 A failed save/validation may leave artifacts but no success manifest; retry in a
 new directory. Pillow is loaded lazily through `images.py`; no ML is invoked.
+
+## Lossless local term-chan sprite export
+
+`export_sprite(base, newcharacter_directory, blink=None, name='neutral',
+provenance=None)` in `sprite_export.py` exports supplied single-frame 48/64 PNGs
+using `images.py` checks and bounded snapshots (16 MiB per input). No resizing,
+quantization, recoloring, generation or quality acceptance occurs. Optional blink
+must have the same geometry. The combined opaque RGB palette must fit 62 colors;
+RGB-sorted indices use `0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ`,
+with `.` for transparency. Opaque RGB and binary alpha round-trip exactly; hidden
+RGB beneath transparent pixels is intentionally not serialized. The shared palette
+is **local to these frames**; the parent loader does not enforce shared palettes
+across expressions. Exporting a blink does not assert localization or closed eyes:
+this tool exports given frames only, without blink-tool manifest verification.
+Missing blink/talk frames use the parent's base fallback; no fake animation is added.
+
+```sh
+python sprite_export.py --base /local/portraits/base.png \
+  --blink /local/blink-frame/blink.png --output /local/characters/new-character
+PYTHONDONTWRITEBYTECODE=1 python -m unittest -v test_sprite_export
+# Optional pure Node integration; no TTY or parent writes:
+PYTHONDONTWRITEBYTECODE=1 TERM_CHAN_LOADER_TEST=1 python -m unittest -v test_sprite_export
+```
+
+The character directory must be new and outside input image directories; it
+contains only `<name>.json` (default `neutral`, safe lowercase filename slug).
+Provenance defaults to the sibling `<character-directory>.provenance.json`, or
+use `--provenance` for a new path outside the character directory. No existing
+paths/inputs are overwritten. Do not put a manifest in the character directory:
+the parent loader reads **all** JSON files as expressions. Provenance records
+input byte hashes, output JSON hash, source paths, dimensions, shared palette and
+factual PNG metrics, not a quality pass or automatic acceptance. I/O failure may
+leave partial output; retry with new paths. Sources remain unchanged.
+
+**Pane fit is separate from format validity:** 64px portraits need roughly 35
+terminal rows, 48px roughly 27, before a speech bubble (two pixel rows per terminal
+row plus UI overhead). A valid export need not fit a short terminal split.
 
 ## Local pretrained sampling controls
 
