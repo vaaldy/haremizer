@@ -32,6 +32,15 @@ def file_hash(path):
     return value.hexdigest()
 
 
+def device_usage(torch):
+    """Optional management-library metric; allocator limits remain mandatory."""
+    try:
+        return {"device_used_bytes": torch.cuda.device_memory_used(0)}
+    except (ImportError, AttributeError, OSError, RuntimeError) as error:
+        return {"device_used_bytes": None,
+                "device_usage_error": f"{type(error).__name__}: {error}"}
+
+
 def keys(value, expected, label):
     if not isinstance(value, dict) or set(value) != set(expected):
         raise ValueError(f"{label}: expected exactly {sorted(expected)}")
@@ -195,7 +204,7 @@ def train(report, output, persist):
         free, total = torch.cuda.mem_get_info()
         result = {"peak_allocated_bytes": torch.cuda.max_memory_allocated(),
                   "peak_reserved_bytes": torch.cuda.max_memory_reserved(),
-                  "device_used_bytes": torch.cuda.device_memory_used(0),
+                  **device_usage(torch),
                   "device_free_bytes": free, "device_total_bytes": total,
                   "scope": "allocator peaks; device usage is an instantaneous all-process reading"}
         runtime["memory"] = result
@@ -404,7 +413,7 @@ def run(request, output):
                     report["runtime"]["failure_memory"] = {
                         "peak_allocated_bytes": torch.cuda.max_memory_allocated(),
                         "peak_reserved_bytes": torch.cuda.max_memory_reserved(),
-                        "device_used_bytes": torch.cuda.device_memory_used(0)}
+                        **device_usage(torch)}
             except Exception:
                 pass
         persist()

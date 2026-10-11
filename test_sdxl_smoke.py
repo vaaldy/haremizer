@@ -149,6 +149,19 @@ class SmokePreflightTests(unittest.TestCase):
         self.assertNotIn("checkpoint", outcome)
         self.assertFalse(outcome["quality_assessed"])
 
+    def test_optional_management_metric_missing_does_not_abort(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        query = Mock(side_effect=ModuleNotFoundError("amdsmi missing"))
+        torch = SimpleNamespace(cuda=SimpleNamespace(device_memory_used=query))
+        result = smoke.device_usage(torch)
+        self.assertIsNone(result["device_used_bytes"])
+        self.assertIn("amdsmi missing", result["device_usage_error"])
+        query.assert_called_once_with(0)
+        query.side_effect = None
+        query.return_value = 123
+        self.assertEqual(smoke.device_usage(torch), {"device_used_bytes": 123})
+
     def test_training_progress_is_durable_before_failure(self):
         self.write()
 
