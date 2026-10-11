@@ -3,7 +3,7 @@
 Text-described anime pixel-art portraits: an independent repository inside
 term-chan. **Current milestone: real SDXL training/inference testbed, annotated
 localized blink, and independently verified sprite JSON export. The 100-step
-style pilot was rejected for quality; no model or sprite is quality-promoted.**
+style pilots were rejected for quality; no model or sprite is quality-promoted.**
 Fully automatic eye landmarks remain missing. Python 3.11+; Pillow for PNG
 processing. GPU inference additionally needs the dedicated PyTorch/diffusers
 runtime. Source tools do not install packages or download models/data; separately
@@ -42,6 +42,14 @@ Training completion and PNG format checks are not quality acceptance.
   Peak allocated GPU memory was 5.66 GB. **Quality promotion was rejected:**
   coarse styling improved in some cases, but one matched descriptor produced an
   extreme cropped face; red-hair adherence also remained wrong.
+- A fresh second 100-step generic-style pilot added CC0 EverFace references.
+  Conservative ambiguity grouping yielded 12 training images/10 declared groups
+  and five heldout images/four groups across two publishers. It also completed
+  in about 118 seconds with unchanged frozen weights and exact reload. Its
+  matched 512px baseline and candidate both suffered framing/repeated-face
+  failures; candidate texture/color changes did not establish quality. This
+  experiment is **not promoted**, and canonical ages, genders and creation
+  methods of the additional references are not claimed verified.
 - One constant whole-head/shoulder/margin scaffold was tested on all four
   descriptors with the unchanged pilot. It did not resolve the crop/geometry
   and adherence failures. No training extension or prompt sweep followed.
@@ -64,6 +72,9 @@ Training completion and PNG format checks are not quality acceptance.
   deleted. Recheck before new downloads.
 
 Ignored evidence: `artifacts/style-pilot-01/review.json`,
+`artifacts/style-pilot-02/review.json`,
+`artifacts/style-pilot-02-curation-review.json`,
+`data/curation-draft-02/everface/curation.json`,
 `artifacts/composition-guided-pilot-01/review.json`,
 `artifacts/alternative-model-review/`, `artifacts/storage-accounting-01.json`,
 `artifacts/exported-long-wavy-01/neutral.json` and sibling
