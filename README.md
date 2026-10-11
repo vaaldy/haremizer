@@ -395,6 +395,12 @@ Both splits undergo local native 64×64 single-frame PNG, byte-hash, source-page
 hash, caption and CC-BY-4.0/CC0-1.0 declaration validation before ML imports.
 Duplicate image bytes or canonical RGBA pixels are rejected across all pilot
 inputs, including different PNG encodings and hidden RGB under zero alpha.
+For inputs with at most 62 visible RGB colors, an additional exact alpha/color-
+partition fingerprint rejects whole-image palette swaps, even under different
+claimed identity groups. Higher-color inputs decline this narrow guard rather
+than treating every unique-color photo as a recolor. This is **not** a semantic
+identity, shared-face-skeleton, near-duplicate, age, or rights detector; grouping
+and source review remain necessary.
 `outcome.json` keeps training records in `inputs` only; `heldout_inputs` and
 `heldout_count` record separate heldout provenance/hashes. Heldout captions and
 pixels never enter training conditioning or caches. Each run starts from the fresh

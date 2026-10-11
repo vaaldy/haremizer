@@ -206,6 +206,8 @@ class SmokePreflightTests(unittest.TestCase):
             image = self.root / f"pilot-{index}.png"
             png = Image.new("RGBA", (64, 64), (index + 1, 20, 30, 255))
             png.putpixel((0, 0), (10, 20, 30, 0))
+            # Distinct non-semantic geometry, not a collection of recolored blocks.
+            png.putpixel((index + 1, 1), (10, 20, 30, 0))
             png.save(image)
             row = {**copy.deepcopy(self.request["examples"][0]), "path": str(image),
                    "sha256": smoke.file_hash(image), "identity_group": f"identity-{index}"}
@@ -310,6 +312,30 @@ class SmokePreflightTests(unittest.TestCase):
                 self.write(request)
                 with self.assertRaisesRegex(ValueError, "canonical pixels"):
                     smoke.preflight(self.request_path, self.output, pilot=True)
+
+    def test_pilot_rejects_palette_swaps_with_distinct_declared_groups(self):
+        for split in ("examples", "heldout_examples"):
+            with self.subTest(split=split):
+                request = self.pilot_fixture()
+                source = Path(request["examples"][0]["path"])
+                target = Path(request[split][-1]["path"])
+                with Image.open(source) as original:
+                    rgba = original.convert("RGBA")
+                    recolored = Image.new("RGBA", rgba.size)
+                    recolored.putdata([((r + 17) % 256, (g + 29) % 256, (b + 43) % 256, a)
+                                       for r, g, b, a in rgba.getdata()])
+                recolored.save(target)
+                request[split][-1]["sha256"] = smoke.file_hash(target)
+                self.write(request)
+                with self.assertRaisesRegex(ValueError, "palette recolor"):
+                    smoke.preflight(self.request_path, self.output, pilot=True)
+                self.assertFalse(self.output.exists())
+
+    def test_palette_guard_declines_true_color_not_claiming_identity(self):
+        image = Image.new("RGBA", (64, 64), (0, 0, 0, 255))
+        for index in range(63):
+            image.putpixel((index, 0), (index + 1, 0, 0, 255))
+        self.assertIsNone(smoke.palette_pattern_digest(image.tobytes()))
 
     def test_pilot_maximum_split_counts_and_heldout_native_size(self):
         request = self.pilot_fixture(train_count=16, heldout_count=16)

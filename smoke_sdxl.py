@@ -41,6 +41,22 @@ def device_usage(torch):
                 "device_usage_error": f"{type(error).__name__}: {error}"}
 
 
+def palette_pattern_digest(rgba):
+    """Exact 64px alpha/color partitions, not identity; decline >62 RGB colors."""
+    labels, pattern = {}, bytearray()
+    for index in range(0, len(rgba), 4):
+        alpha = rgba[index + 3]
+        if not alpha:
+            pattern.extend((0, 0))
+            continue
+        rgb = rgba[index:index + 3]
+        label = labels.setdefault(rgb, len(labels) + 1)
+        if len(labels) > 62:
+            return None
+        pattern.extend((label, alpha))
+    return hashlib.sha256(b"64x64:" + pattern).hexdigest()
+
+
 def keys(value, expected, label):
     if not isinstance(value, dict) or set(value) != set(expected):
         raise ValueError(f"{label}: expected exactly {sorted(expected)}")
@@ -113,7 +129,7 @@ def preflight(request_path, output, *, pilot=False):
     splits = [("examples", 4 if pilot else 1, 16 if pilot else 2)]
     if pilot:
         splits.append(("heldout_examples", 2, 16))
-    validated, seen, seen_pixels = {}, set(), set()
+    validated, seen, seen_pixels, seen_patterns = {}, set(), set(), set()
     from PIL import Image
     for name, minimum, maximum in splits:
         examples = request[name]
@@ -157,8 +173,14 @@ def preflight(request_path, output, *, pilot=False):
                     if pixel_hash in seen_pixels:
                         raise ValueError("duplicate canonical pixels across pilot inputs")
                     seen_pixels.add(pixel_hash)
+                    pattern_hash = palette_pattern_digest(data)
+                    if pattern_hash is not None:
+                        if pattern_hash in seen_patterns:
+                            raise ValueError("duplicate pixel pattern under a whole-image palette recolor")
+                        seen_patterns.add(pattern_hash)
             records.append({**row, "path": str(image), "source_page": {**source, "path": str(page)},
-                            **({"pixel_sha256": pixel_hash} if pilot else {})})
+                            **({"pixel_sha256": pixel_hash,
+                                "palette_pattern_sha256": pattern_hash} if pilot else {})})
         validated[name] = records
         if pilot and len({row["identity_group"] for row in records}) < minimum:
             raise ValueError(f"{name}: require at least {minimum} distinct identity groups")
