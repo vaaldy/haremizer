@@ -129,6 +129,123 @@ exercised; a successful short pilot does not prove long-run stability. Nothing h
 learned quality as passing. Generated outputs must never be silently fed back
 into training.
 
+## Supervised durable refinement loop
+
+`refinement_loop.py` coordinates **one explicitly chosen stage at a time**, not a
+hyperparameter sweep or an independent LLM service. Sol must actually inspect
+images externally after every successful stage. No GPU operation happens at
+initialization/enqueue; enqueue calls the existing CPU `preflight(..., refine=True)`.
+The loop does not select learning rates, source padding, steps, continuation, or
+training data. Existing `smoke_sdxl.py --refine` source/identity partition checks
+remain authoritative. Generated run PNGs cannot enter either source partition.
+
+CLI (already-installed Python/Pillow; no install/download operation):
+
+```sh
+python -B refinement_loop.py init /absolute/run /absolute/plan.json
+python -B refinement_loop.py enqueue /absolute/run /absolute/request.json 'explicit change and why'
+python -B refinement_loop.py next /absolute/run
+python -B refinement_loop.py status /absolute/run
+# Inspect actual images, add native-format PNG evidence inside stage-NNN, then:
+python -B refinement_loop.py review /absolute/run /absolute/review.json
+# Explicit validation-only pass; no optimizer/training:
+python -B refinement_loop.py validate-existing /absolute/run /absolute/weights.safetensors /absolute/outcome.json
+PYTHONDONTWRITEBYTECODE=1 python -B -m unittest -v test_refinement_loop
+```
+
+Plan JSON fields (no implicit defaults):
+
+```json
+{
+  "model": {"path": "/canonical/local/SDXL", "id": "OWNER/MODEL", "revision": "immutable-40-or-64-hex"},
+  "python": "/absolute/already-installed/runtime/bin/python",
+  "deadline_utc": "2026-01-01T12:00:00Z",
+  "max_stages": 4,
+  "train_seconds": 900,
+  "sample_seconds": 600,
+  "storage_paths": ["/absolute/runtime", "/absolute/shared-cache", "/absolute/model-cache", "/absolute/data", "/absolute/artifacts", "/absolute/core-dumps"],
+  "settings": {"width": 768, "height": 768, "steps": 28, "guidance_scale": 5, "model_cpu_offload": true, "negative_prompt": "fixed nonblank negative prompt"},
+  "suites": [{"path": "/absolute/primary.json", "baseline": "/absolute/primary-baseline"}, {"path": "/absolute/challenge.json", "baseline": "/absolute/challenge-baseline"}],
+  "validation_suites": [{"path": "/absolute/primary-new-seeds.json", "baseline": "/absolute/primary-new-seeds-baseline"}, {"path": "/absolute/challenge-new-seeds.json", "baseline": "/absolute/challenge-new-seeds-baseline"}]
+}
+```
+
+Replace the illustrative deadline/revision/paths with real values. Deadline must
+be future UTC, at most 12 hours from init; stages 1..8, including failed and
+validation-only stages. `validation_suites` is optional, but without it robust
+acceptance/validation is unavailable. Every suite uses `prepare.freeze_suite`'s
+schema, exactly four cases, and fixed seeds; each second-pass suite has new seeds.
+All supplied baseline directories must already contain four unloaded-base
+`sample.py` PNGs and manifests matching the exact model, suite, and settings.
+This API requires absolute request input paths, so freezing exact request bytes
+into the run cannot reinterpret relative paths. The model path must be canonical.
+A 40-hex model revision uses the pinned HF snapshot convention; a 64-hex revision
+is the existing canonical file-content digest. Each training enqueue needs new
+request bytes and an explicit reason; continuation is never inferred.
+
+Plan/suite/request bytes, Python executable, current local trainer/sampler and
+local helper modules, model bytes and supplied baseline files are hash-bound.
+Directories/outputs are fresh and never overwritten. CLI writers serialize with
+a directory lock; direct `Loop` API callers must remain single-writer. Atomic
+fsynced state persists running stages before spawning. An interrupted `running`
+stage **does not auto-resume**: inspect its logs/owned process and preserve the run;
+there is intentionally no automatic recovery/retry or rollback deletion command.
+Old incumbent, best-promising, and `previous` checkpoint paths are retained.
+
+Storage roots must conservatively include the whole runtime, shared caches,
+models, source data, artifacts, and existing core dumps, not merely known input
+files. The caller supplies that inventory; the coordinator cannot discover all
+unlisted external storage. Each path is counted by a **separate** `du -s -B1`
+invocation: shared hardlinks across listed roots conservatively count again,
+but a symlink is not fictional extra allocated weight storage within a root.
+Include the resolved Python interpreter root as well as its virtual environment.
+Add 200 MB image allowance plus 2 GB reserve;
+strictly less than 100,000,000,000 bytes is required. Bounds are checked before
+children, approximately every five seconds during children, and afterward.
+Reserve/periodic checks are not a filesystem quota and cannot prevent a child
+from transiently allocating beyond the ceiling between checks.
+
+Children use Python `-B` argv (no shell), a new owned process group, zero core
+limit, process-local gfx10.3.0 and HF/transformers/datasets offline environment.
+Training is capped at 900 seconds; each four-case sampler at 600 seconds, further
+limited by the remaining deadline. Only the owned group is killed on failure or
+timeout. Cleanup waits at most five seconds; an unreaped owned child is recorded
+as `cleanup_pending` and blocks every subsequent stage. There is no CPU training
+fallback. Logs, argv, return codes, durations,
+reported memory outcomes and checkpoint hashes are retained. Deadline/storage/
+stage exhaustion is a budget result, **not** model quality. Reviews may finish
+after the compute deadline, but no further child starts.
+
+`status` exposes `review_binding`; copy that object unchanged into the review
+JSON's `binding`. Review fields:
+
+- `reviewed_by: "machine:sol"`, nonblank `notes`, boolean `uncertain`, optional
+  boolean `robust_requested` (default false).
+- `checks`: **exactly** `format`, `pixel_quality`, `prompt_adherence`,
+  `character_diversity`, `non_regression`, each a boolean.
+- `cases`: exactly eight keys from stage `cases[].case` (`0:id` and `1:id`). Each
+  has nonblank string `glitches`, `crop_duplicate_face`, `adherence`, and
+  `readability` observations, including explicit absence/uncertainty as appropriate.
+- `format_evidence`: `{ "path": "/absolute/run/stage-NNN/native.png", "sha256": "..." }`
+  records for actual postprocessed 48/64 PNGs. `format: true` requires these
+  separate current-stage files to pass `images.validate_png`; robust requests
+  additionally need native 64 evidence. Raw outputs/contact sheets are not eligible.
+
+The binding covers stage, actual checkpoint hash, suite byte hashes, plan hash,
+all generated PNGs/manifests/sheets, and supplied baselines. Raw labeled comparison
+sheets and **64px NEAREST, unquantized viewing previews** are provided: previews
+are not transparent validated sprites or quality proof. A failed check or any
+uncertainty records rejection and a finding; it cannot replace an incumbent.
+All checks true with no uncertainty yields **promising only**. Robust requires an
+explicit `robust_requested: true`, separately recorded accepted first and
+validation-only second reviews on the **same weights**, different frozen suite
+sets and eight raw cases each (16 total), rechecked earlier evidence, and actual
+native 64 format evidence. No loss/PNG/process-completion heuristic promotes.
+External declarations are trusted as declarations, never legal, human, or
+machine-verifiable semantic proof. CPU tests exercise orchestration only, not
+training or visual quality. Main Sol owns actual training orchestration and image
+review; this tool cannot fulfill a 12-hour autonomous training goal by itself.
+
 ## Observed local runtime
 
 On this CachyOS / RX 6700 XT (`gfx1031`) machine, an isolated Python 3.12
