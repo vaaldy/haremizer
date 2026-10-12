@@ -40,6 +40,12 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **23** synthesized four exact source captions from noise. The adapter
+  strongly changed/coarsened source-context style, but exaggerated features and
+  source/semantic fidelity failed. Generated diagnostics remain excluded from
+  training. Global **24** tests one shared quality-suffix removal on both arms,
+  separating conditioning interference from learned adapter improvement.
+
 - Global **22** froze Q/K adapter weights and optimized value/output parameters;
   numeric/frozen/reload checks passed, but native64 features remain inconsistent.
   The next diagnostic synthesizes exact training captions from noise, paired
