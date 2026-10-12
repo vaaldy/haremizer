@@ -369,6 +369,173 @@ class SmokePreflightTests(unittest.TestCase):
         self.assertEqual(len(report["inputs"]), 5)
         self.assertEqual(len({r["identity_group"] for r in report["inputs"]}), 4)
 
+    def refine_fixture(self, continuation=False):
+        request = self.pilot_fixture()
+        request["config"].update(steps=50, content_resolution=384, seed=42, learning_rate=2e-5)
+        request["continuation"] = None
+        if continuation:
+            import struct
+            adapter = self.root / "parent.safetensors"
+            header = {}
+            offset = 0
+            for part, shape in (("down", [4, 8]), ("up", [8, 4])):
+                header[f"unet.down_blocks.0.attentions.0.to_q.lora.{part}.weight"] = {
+                    "dtype": "F32", "shape": shape, "data_offsets": [offset, offset + 128]}
+                offset += 128
+            raw = json.dumps(header).encode()
+            adapter.write_bytes(struct.pack("<Q", len(raw)) + raw + bytes(offset))
+            self.write(self.pilot_fixture())
+            parent = smoke.preflight(self.request_path, self.output, pilot=True)
+            parent.update(status="pilot_completed_unreviewed", phase="completed", training_started=True,
+                          checkpoint={"path": adapter.name, "sha256": smoke.file_hash(adapter), "reload_exact": True})
+            outcome = self.root / "parent-outcome.json"
+            outcome.write_text(json.dumps(parent))
+            request["continuation"] = {"path": str(adapter), "sha256": smoke.file_hash(adapter),
+                                       "outcome": str(outcome), "outcome_sha256": smoke.file_hash(outcome)}
+        return request
+
+    def test_refine_bounds_modes_and_preimport(self):
+        import builtins
+        original = builtins.__import__
+
+        def guard(name, *args, **kwargs):
+            if name.split(".")[0] in {"torch", "diffusers", "transformers", "peft", "safetensors"}:
+                raise AssertionError("preflight imported ML")
+            return original(name, *args, **kwargs)
+
+        for parent in (False, True):
+            request = self.refine_fixture(parent)
+            for content in (384, 448, 512):
+                request["config"]["content_resolution"] = content
+                self.write(request)
+                with patch("builtins.__import__", side_effect=guard):
+                    report = smoke.preflight(self.request_path, self.output, refine=True)
+                self.assertEqual(len(report["inputs"]), 4)
+                self.assertEqual(report["heldout_count"], 2)
+        for kwargs in ({"refine": 1}, {"refine": None}, {"refine": "true"},
+                       {"pilot": True, "refine": True}):
+            with self.assertRaises(ValueError):
+                smoke.preflight(self.request_path, self.output, **kwargs)
+        for key, values in (("steps", [49, 601, True]), ("seed", [-1, 2**32, True, 1.5]),
+                            ("learning_rate", [0, 0.001, float("nan"), float("inf"), True]),
+                            ("content_resolution", [383, 449, True, 512.0]),
+                            ("rank", [8]), ("resolution", [768])):
+            for value in values:
+                request = self.refine_fixture()
+                request["config"][key] = value
+                self.write(request)
+                with self.subTest(key=key, value=value), patch.object(smoke, "train") as trainer:
+                    with self.assertRaises(ValueError):
+                        smoke.run(self.request_path, self.output, refine=True)
+                    trainer.assert_not_called()
+                    self.assertFalse(self.output.exists())
+        request = self.refine_fixture()
+        request["config"].update(steps=600, seed=2**32 - 1, learning_rate=1e-5)
+        self.write(request)
+        smoke.preflight(self.request_path, self.output, refine=True)
+        request.pop("continuation")
+        self.write(request)
+        with self.assertRaises(ValueError):
+            smoke.preflight(self.request_path, self.output, refine=True)
+
+    def test_refine_continuation_rejects_hash_base_rank_and_incomplete_outcomes(self):
+        for mutate in (lambda p: p.update(status="running"), lambda p: p.update(status="failed"),
+                       lambda p: p.update(training_started=False),
+                       lambda p: p["model"].update(id="other/base"),
+                       lambda p: p["model"].update(revision="b" * 40),
+                       lambda p: p["model"].update(file_sha256={}),
+                       lambda p: p["request"]["config"].update(rank=8),
+                       lambda p: p["checkpoint"].update(sha256="0" * 64),
+                       lambda p: p["checkpoint"].update(path="elsewhere.safetensors")):
+            request = self.refine_fixture(True)
+            outcome = Path(request["continuation"]["outcome"])
+            parent = json.loads(outcome.read_text())
+            mutate(parent)
+            outcome.write_text(json.dumps(parent))
+            request["continuation"]["outcome_sha256"] = smoke.file_hash(outcome)
+            self.write(request)
+            with patch.object(smoke, "train") as trainer, self.assertRaises(ValueError):
+                smoke.run(self.request_path, self.output, refine=True)
+            trainer.assert_not_called()
+        for field in ("sha256", "outcome_sha256"):
+            request = self.refine_fixture(True)
+            request["continuation"][field] = "0" * 64
+            self.write(request)
+            with self.assertRaises(ValueError):
+                smoke.preflight(self.request_path, self.output, refine=True)
+        request = self.refine_fixture(True)
+        adapter = Path(request["continuation"]["path"])
+        adapter.write_bytes(b"invalid")
+        request["continuation"]["sha256"] = smoke.file_hash(adapter)
+        self.write(request)
+        with self.assertRaises(ValueError):
+            smoke.preflight(self.request_path, self.output, refine=True)
+        with self.assertRaises(ValueError):
+            smoke.preflight(self.request_path, self.root, refine=True)
+
+    def test_refine_adapter_header_rank_dtype_and_size_gates(self):
+        import struct
+        for mutate in (lambda h: next(iter(h.values())).update(dtype="F16"),
+                       lambda h: next(iter(h.values())).update(shape=[8, 4]),
+                       lambda h: h.pop(next(iter(h))),
+                       lambda h: next(iter(h.values())).update(data_offsets=[1, 129])):
+            request = self.refine_fixture(True)
+            adapter = Path(request["continuation"]["path"])
+            raw = adapter.read_bytes()
+            length = struct.unpack("<Q", raw[:8])[0]
+            header = json.loads(raw[8:8 + length])
+            mutate(header)
+            modified = json.dumps(header).encode()
+            adapter.write_bytes(struct.pack("<Q", len(modified)) + modified + raw[8 + length:])
+            request["continuation"]["sha256"] = smoke.file_hash(adapter)
+            self.write(request)
+            with self.assertRaises(ValueError):
+                smoke.preflight(self.request_path, self.output, refine=True)
+        with adapter.open("wb") as stream:
+            stream.truncate(64 * 1024**2 + 1)
+        with self.assertRaisesRegex(ValueError, "64 MiB"):
+            smoke.validate_adapter_file(adapter)
+
+    def test_refine_preprocessing_actual_pixels_and_legacy_equivalence(self):
+        image = Image.new("RGBA", (64, 64), (10, 20, 30, 255))
+        image.putpixel((0, 0), (99, 88, 77, 0))
+        image.putpixel((1, 0), (10, 20, 30, 127))
+        for content in (384, 448, 512):
+            rgb = smoke.prepare_rgb(image, content)
+            pad, scale = (512 - content) // 2, content // 64
+            self.assertEqual(rgb.size, (512, 512))
+            self.assertEqual(rgb.getpixel((pad, pad)), (255, 255, 255))
+            self.assertEqual(rgb.getpixel((pad + 2 * scale, pad)), (10, 20, 30))
+            for x in range(scale):
+                for y in range(scale):
+                    self.assertEqual(rgb.getpixel((pad + 2 * scale + x, pad + y)), (10, 20, 30))
+            if pad:
+                self.assertEqual(rgb.getpixel((pad - 1, 256)), (255, 255, 255))
+                self.assertEqual(rgb.getpixel((512 - pad, 256)), (255, 255, 255))
+        rgba = image.resize((512, 512), Image.Resampling.NEAREST)
+        legacy = Image.alpha_composite(Image.new("RGBA", rgba.size, "white"), rgba).convert("RGB")
+        self.assertEqual(smoke.prepare_rgb(image).tobytes(), legacy.tobytes())
+
+    def test_refine_mocked_status_and_cli(self):
+        self.write(self.refine_fixture())
+        with patch.object(smoke.importlib.metadata, "version", side_effect=smoke.VERSIONS.__getitem__), \
+                patch.object(smoke.sys, "version_info", (3, 12)), patch.object(smoke, "train"):
+            result = smoke.run(self.request_path, self.output, refine=True)
+        self.assertEqual(result["status"], "refinement_completed_unreviewed")
+        self.assertIs(result["quality_assessed"], False)
+        self.assertIs(result["promotion"], False)
+        import io
+        with patch.object(smoke.sys, "argv", ["smoke_sdxl.py", "--refine", "--request",
+                                               str(self.request_path), "--output", str(self.output)]), \
+                patch.object(smoke, "run", return_value=result) as run, \
+                patch.object(smoke.sys, "stdout", new_callable=io.StringIO):
+            smoke.main()
+        run.assert_called_once_with(self.request_path, self.output, pilot=False, refine=True)
+        with patch.object(smoke.sys, "argv", ["smoke_sdxl.py", "--refine", "--pilot", "--request",
+                                               str(self.request_path), "--output", str(self.output)]):
+            with self.assertRaises(SystemExit):
+                smoke.main()
+
     @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU API test")
     def test_real_diffusers_save_delete_reload_cpu(self):
         import torch
@@ -390,6 +557,21 @@ class SmokePreflightTests(unittest.TestCase):
         frozen = {k: p.detach().clone() for k, p in unet.named_parameters() if not p.requires_grad}
         self.output.mkdir()
         expected = smoke.save_adapter(unet, self.output)
+        smoke.validate_adapter_file(self.output / "pytorch_lora_weights.safetensors")
+        import copy
+        child = copy.deepcopy(unet)
+        child.delete_adapters("default")
+        parent_hash = smoke.file_hash(self.output / "pytorch_lora_weights.safetensors")
+        reloaded = smoke.load_continuation(child, self.output / "pytorch_lora_weights.safetensors")
+        self.assertEqual(parent_hash, smoke.file_hash(self.output / "pytorch_lora_weights.safetensors"))
+        child_frozen = {k: p for k, p in child.named_parameters() if not p.requires_grad}
+        self.assertEqual(set(frozen), set(child_frozen))
+        self.assertTrue(all(torch.equal(v, child_frozen[k]) for k, v in frozen.items()))
+        self.assertTrue(any(not torch.equal(v, v.half().float()) for v in expected.values()))
+        self.assertEqual(set(expected), set(reloaded))
+        self.assertTrue(all(torch.equal(v, reloaded[k]) for k, v in expected.items()))
+        self.assertTrue(all(p.dtype == torch.float32 if p.requires_grad else p.dtype == torch.float16
+                            for p in child.parameters()))
         smoke.reload_adapter(unet, self.output, expected)
         actual = {k: p for k, p in unet.named_parameters() if not p.requires_grad}
         self.assertEqual(set(frozen), set(actual))

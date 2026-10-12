@@ -437,6 +437,54 @@ timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
   --request artifacts/style-pilot-request-01.json --output artifacts/style-pilot-01
 ```
 
+### Bounded weights refinement
+
+`--refine` (Python `refine=True`, default `False`) is mutually exclusive with
+`--pilot`; both Python selectors require actual booleans. The original smoke
+and pilot contracts are unchanged. Refinement uses the pilot's train/heldout,
+source/hash, identity-group and anti-recolor gates, with
+`declared_smoke_only: false`. It permits 50–600 total optimizer steps, a uint32
+seed and finite learning rate 1e-5–1e-4; batch 1, effective resolution 512, rank 4
+and gradient clip 1 remain fixed.
+
+Refinement config additionally requires `content_resolution: 384`, `448` or
+`512`. Original 64px RGBA is nearest-scaled to that square, centered on a 512px
+white canvas with explicit alpha compositing, then converted to RGB. Exact
+resize, symmetric padding, background, cached PNG hash and raw RGB hash are
+recorded. Effective SDXL time IDs remain `[512,512,0,0,512,512]`. Only training
+captions/latents are cached; heldout inputs never condition training. Legacy
+512-content preprocessing is unchanged.
+
+Refinement requests also require `continuation`, either `null` for the unchanged
+fresh-base LoRA initializer or exactly:
+
+```json
+{"path":"/local/parent/pytorch_lora_weights.safetensors","sha256":"FULL_LOWERCASE_SHA256","outcome":"/local/parent/outcome.json","outcome_sha256":"FULL_LOWERCASE_SHA256"}
+```
+
+Continuation accepts only local, nonempty own fp32 rank-4 diffusers attention
+safetensors up to 64 MiB, bound by full hashes to a completed haremizer outcome's
+checkpoint, rank, identical base ID/revision and full model-file hashes. These
+checks do not import ML packages. Output must be new and must not contain or
+replace continuation inputs. Parent checkpoint bytes are never rewritten.
+The actual diffusers loader injects parent weights on CPU with an fp32 base,
+checks exact adapter tensor equality, then restores frozen base parameters to
+fp16 before GPU placement. No silent fp16 adapter round-trip is permitted.
+Training still uses fp32 adapters, checkpointing/autocast and the existing
+finite/frozen/update/save-reload checks. Each stage creates **new AdamW state**:
+this is weights continuation, not exact optimizer resume. Parent provenance,
+starting adapter identity and final update relative to starting weights are
+recorded atomically with progress.
+
+Completion is `refinement_completed_unreviewed`, with quality and promotion
+false. No autonomous loop, evaluation, quality acceptance or synthetic feedback
+runs inside this trainer. The parent owns iterative visual review and must wrap
+each stage in the same 900-second timeout, within the user's 12-hour autonomous
+window and <100 GB total storage ceiling. No driver changes, installs, network
+access or paid services are added by this seam. CPU API tests establish exact
+reload only; GPU refinement/continuation still requires separate execution
+verification and independent quality review.
+
 ## Dataset and rights input contract
 
 Use separate local imagefolder roots, e.g. `data/approved/train/` and

@@ -1,4 +1,4 @@
-"""Local GPU-only bounded SDXL attention-LoRA smoke/style pilot; never quality acceptance."""
+"""Local GPU-only bounded SDXL attention-LoRA smoke/pilot/refinement; never quality acceptance."""
 from __future__ import annotations
 
 import argparse
@@ -6,7 +6,9 @@ import gc
 import hashlib
 import importlib.metadata
 import json
+import math
 import os
+import struct
 from pathlib import Path
 import re
 import sys
@@ -62,32 +64,47 @@ def keys(value, expected, label):
         raise ValueError(f"{label}: expected exactly {sorted(expected)}")
 
 
-def preflight(request_path, output, *, pilot=False):
+def preflight(request_path, output, *, pilot=False, refine=False):
     """Validate local declarations and byte identities without importing ML packages."""
-    if type(pilot) is not bool:
-        raise ValueError("pilot must be an explicit boolean")
+    if type(pilot) is not bool or type(refine) is not bool:
+        raise ValueError("pilot and refine must be an explicit boolean")
+    if pilot and refine:
+        raise ValueError("pilot and refine are mutually exclusive")
+    style = pilot or refine
     request_path, output = Path(request_path).resolve(), Path(output).resolve()
     raw = request_path.read_bytes()
     request = json.loads(raw)
     request_keys = {"model", "config", "examples", "reviewed_by", "declared_smoke_only",
                     "authorization"}
-    if pilot:
+    if style:
         request_keys.add("heldout_examples")
+    if refine:
+        request_keys.add("continuation")
     keys(request, request_keys, "request")
-    if request["reviewed_by"] != "machine:sol" or request["declared_smoke_only"] is not (not pilot):
-        raise ValueError(f"truthful machine:sol review and declared_smoke_only={not pilot} required")
+    if request["reviewed_by"] != "machine:sol" or request["declared_smoke_only"] is not (not style):
+        raise ValueError(f"truthful machine:sol review and declared_smoke_only={not style} required")
     authorization = request["authorization"]
     keys(authorization, {"user_authorized", "record"}, "authorization")
     if authorization["user_authorized"] is not True or not nonempty(authorization["record"]):
         raise ValueError("record the existing broad user authorization; do not invent human approval")
     config = request["config"]
-    keys(config, {*CONFIG, "steps"}, "config")
+    keys(config, {*CONFIG, "steps", *({"content_resolution"} if refine else set())}, "config")
+    fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate")}
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
-           config[k] != v for k, v in CONFIG.items()):
+           config[k] != v for k, v in fixed.items()):
         raise ValueError("smoke config must use the fixed batch/resolution/rank/seed/lr/clip")
+    if refine:
+        if (type(config["seed"]) is not int or not 0 <= config["seed"] <= 2**32 - 1 or
+                type(config["learning_rate"]) not in (int, float) or
+                not math.isfinite(config["learning_rate"]) or
+                not 1e-5 <= config["learning_rate"] <= 1e-4 or
+                type(config["content_resolution"]) is not int or
+                config["content_resolution"] not in (384, 448, 512)):
+            raise ValueError("refine requires uint32 seed, finite learning_rate 1e-5..1e-4 and content_resolution 384/448/512")
     if type(config["steps"]) is not int or not (
+            50 <= config["steps"] <= 600 if refine else
             config["steps"] == 100 if pilot else 1 <= config["steps"] <= 2):
-        raise ValueError("steps must be exactly 100" if pilot else
+        raise ValueError("steps must be 50..600" if refine else "steps must be exactly 100" if pilot else
                          "steps must be 1..2 total optimizer steps")
     spec = request["model"]
     keys(spec, {"path", "id", "revision"}, "model")
@@ -126,8 +143,42 @@ def preflight(request_path, output, *, pilot=False):
             raise ValueError("model path must match pinned HF cache id/revision convention")
     elif canonical_digest(hashes) != revision:
         raise ValueError("64-hex model content revision mismatch")
-    splits = [("examples", 4 if pilot else 1, 16 if pilot else 2)]
-    if pilot:
+    continuation = None
+    if refine and request["continuation"] is not None:
+        parent = request["continuation"]
+        keys(parent, {"path", "sha256", "outcome", "outcome_sha256"}, "continuation")
+        adapter, outcome = local(parent["path"]), local(parent["outcome"])
+        validate_adapter_file(adapter)
+        for path, expected in ((adapter, parent["sha256"]), (outcome, parent["outcome_sha256"])):
+            if (not isinstance(expected, str) or re.fullmatch(r"[0-9a-f]{64}", expected) is None or
+                    not path.is_file() or file_hash(path) != expected or path.is_relative_to(output)):
+                raise ValueError("continuation input/hash/output mismatch")
+        evidence = json.loads(outcome.read_bytes())
+        if (not isinstance(evidence, dict) or evidence.get("status") not in
+                ("smoke_passed", "pilot_completed_unreviewed", "refinement_completed_unreviewed") or
+                evidence.get("phase") != "completed" or evidence.get("training_started") is not True):
+            raise ValueError("continuation requires completed haremizer outcome")
+        checkpoint = evidence.get("checkpoint", {})
+        parent_model = evidence.get("model", {})
+        parent_request = evidence.get("request", {})
+        if not isinstance(parent_request, dict):
+            raise ValueError("invalid continuation request provenance")
+        parent_config = parent_request.get("config", {})
+        if any(not isinstance(value, dict) for value in (checkpoint, parent_model, parent_config)):
+            raise ValueError("invalid continuation checkpoint/base/config provenance")
+        if (checkpoint.get("sha256") != parent["sha256"] or
+                not nonempty(checkpoint.get("path")) or
+                (outcome.parent / checkpoint["path"]).resolve() != adapter or
+                checkpoint.get("reload_exact") is not True or
+                type(parent_config.get("rank")) is not int or parent_config["rank"] != 4 or
+                any(parent_model.get(k) != v for k, v in
+                    (("id", spec["id"]), ("revision", revision), ("file_sha256", hashes)))):
+            raise ValueError("continuation checkpoint/base/rank provenance mismatch")
+        continuation = {**parent, "path": str(adapter), "outcome": str(outcome),
+                        "base_model": parent_model, "rank": 4,
+                        "scope": "weights continuation only; new optimizer, not exact optimizer resume"}
+    splits = [("examples", 4 if style else 1, 16 if style else 2)]
+    if style:
         splits.append(("heldout_examples", 2, 16))
     validated, seen, seen_pixels, seen_patterns = {}, set(), set(), set()
     from PIL import Image
@@ -139,10 +190,10 @@ def preflight(request_path, output, *, pilot=False):
         for row in examples:
             example_keys = {"path", "sha256", "caption", "source_url", "license", "credit",
                             "source_page"}
-            if pilot:
+            if style:
                 example_keys.add("identity_group")
             keys(row, example_keys, "example")
-            if pilot and not nonempty(row["identity_group"]):
+            if style and not nonempty(row["identity_group"]):
                 raise ValueError("nonblank identity_group required")
             source = row["source_page"]
             keys(source, {"path", "sha256"}, "source_page")
@@ -164,7 +215,7 @@ def preflight(request_path, output, *, pilot=False):
                 if png.format != "PNG" or png.size != (64, 64) or getattr(png, "n_frames", 1) != 1:
                     raise ValueError("single-frame native 64x64 PNG required")
                 png.load()
-                if pilot:
+                if style:
                     data = png.convert("RGBA").tobytes()
                     canonical = bytes(channel for index in range(0, len(data), 4)
                                       for channel in (data[index:index + 4] if data[index + 3]
@@ -180,11 +231,11 @@ def preflight(request_path, output, *, pilot=False):
                         seen_patterns.add(pattern_hash)
             records.append({**row, "path": str(image), "source_page": {**source, "path": str(page)},
                             **({"pixel_sha256": pixel_hash,
-                                "palette_pattern_sha256": pattern_hash} if pilot else {})})
+                                "palette_pattern_sha256": pattern_hash} if style else {})})
         validated[name] = records
-        if pilot and len({row["identity_group"] for row in records}) < minimum:
+        if style and len({row["identity_group"] for row in records}) < minimum:
             raise ValueError(f"{name}: require at least {minimum} distinct identity groups")
-    if pilot and ({row["identity_group"] for row in validated["examples"]} &
+    if style and ({row["identity_group"] for row in validated["examples"]} &
                   {row["identity_group"] for row in validated["heldout_examples"]}):
         raise ValueError("identity_group intersection across splits")
     if request_path.is_relative_to(output):
@@ -192,7 +243,8 @@ def preflight(request_path, output, *, pilot=False):
     override = os.environ.get("HSA_OVERRIDE_GFX_VERSION")
     if override not in (None, "10.3.0"):
         raise ValueError("only the authorized process-local gfx 10.3.0 override is supported")
-    return {"request": request, "request_sha256": hashlib.sha256(raw).hexdigest(),
+    return {**({"continuation": continuation} if refine else {}),
+            "request": request, "request_sha256": hashlib.sha256(raw).hexdigest(),
             "config_sha256": canonical_digest(config), "model": {**spec, "path": str(model),
             "manifest": identity, "file_sha256": hashes,
             "provenance_scope": "HF path asserts revision; content hashes bind local bytes, not upstream authenticity"},
@@ -200,12 +252,87 @@ def preflight(request_path, output, *, pilot=False):
             **({"heldout_inputs": validated["heldout_examples"],
                 "heldout_count": len(validated["heldout_examples"]),
                 "holdout_scope": "declared identity groups, not independently proven identities"}
-               if pilot else {}),
+               if style else {}),
             "script_sha256": file_hash(__file__),
             "runtime_override": override,
             "override_scope": "existing process-local environment only; unsupported workaround, not native support",
             "quality_assessed": False,
             "promotion": False, "synthetic_feedback": False}
+
+
+def validate_adapter_file(path):
+    """Inspect the local safetensors header without importing an ML runtime."""
+    size = path.stat().st_size
+    if path.suffix != ".safetensors" or not 8 < size <= 64 * 1024**2:
+        raise ValueError("continuation requires nonempty safetensors <=64 MiB")
+    with path.open("rb") as stream:
+        length = struct.unpack("<Q", stream.read(8))[0]
+        if not 0 < length <= min(size - 8, 1024**2):
+            raise ValueError("invalid adapter header")
+        try:
+            header = json.loads(stream.read(length))
+        except (ValueError, UnicodeError) as error:
+            raise ValueError("invalid adapter header") from error
+    if not isinstance(header, dict):
+        raise ValueError("invalid adapter header")
+    tensors = {k: v for k, v in header.items() if k != "__metadata__"}
+    pairs, intervals = {}, []
+    for name, tensor in tensors.items():
+        match = re.fullmatch(r"unet\.(.+\.(?:to_q|to_k|to_v|to_out\.0))\.lora\.(down|up)\.weight", name)
+        if not match or not isinstance(tensor, dict):
+            raise ValueError("only own diffusers UNet attention adapters supported")
+        shape, offsets = tensor.get("shape"), tensor.get("data_offsets")
+        dtype = tensor.get("dtype")
+        if (dtype != "F32" or not isinstance(shape, list) or len(shape) != 2 or
+                any(type(n) is not int or n <= 0 for n in shape) or
+                shape[0 if match[2] == "down" else 1] != 4 or
+                not isinstance(offsets, list) or len(offsets) != 2 or
+                any(type(n) is not int for n in offsets) or
+                not 0 <= offsets[0] < offsets[1] <= size - 8 - length or
+                offsets[1] - offsets[0] != math.prod(shape) * 4):
+            raise ValueError("continuation requires own fp32 rank4 adapter tensors")
+        pairs.setdefault(match[1], {})[match[2]] = shape
+        intervals.append(offsets)
+    cursor = 0
+    for begin, end in sorted(intervals):
+        if begin != cursor:
+            raise ValueError("invalid adapter tensor offsets")
+        cursor = end
+    if (not pairs or cursor != size - 8 - length or
+            any(set(pair) != {"down", "up"} for pair in pairs.values())):
+        raise ValueError("incomplete rank4 adapter")
+
+
+def prepare_rgb(image, content_resolution=512):
+    from PIL import Image
+    rgba = image.convert("RGBA").resize((content_resolution, content_resolution), Image.Resampling.NEAREST)
+    padding = (512 - content_resolution) // 2
+    canvas = Image.new("RGBA", (512, 512), "white")
+    canvas.alpha_composite(rgba, (padding, padding))
+    return canvas.convert("RGB")
+
+
+def load_continuation(unet, path):
+    import torch
+    from diffusers import StableDiffusionXLPipeline
+    from diffusers.utils import convert_unet_state_dict_to_peft
+    from peft import get_peft_model_state_dict
+    from safetensors.torch import load_file
+    state = load_file(str(path), device="cpu")
+    expected = convert_unet_state_dict_to_peft({k.removeprefix("unet."): v for k, v in state.items()})
+    # Injection follows base dtype: upcast on CPU first, never round adapters via fp16.
+    unet.float()
+    StableDiffusionXLPipeline.load_lora_into_unet(state, network_alphas=None, unet=unet,
+                                               adapter_name="default")
+    actual = get_peft_model_state_dict(unet)
+    if set(actual) != set(expected) or any(
+            actual[k].dtype != torch.float32 or not torch.equal(actual[k].detach().cpu(), expected[k])
+            for k in expected):
+        raise RuntimeError("continuation adapter precision/state mismatch")
+    for param in unet.parameters():
+        if not param.requires_grad:
+            param.data = param.data.half()
+    return {k: v.detach().cpu().clone() for k, v in actual.items()}
 
 
 def save_adapter(unet, output):
@@ -221,20 +348,8 @@ def save_adapter(unet, output):
 
 def reload_adapter(unet, output, expected):
     import torch
-    from diffusers import StableDiffusionXLPipeline
-    from peft import get_peft_model_state_dict
-    from safetensors.torch import load_file
     unet.delete_adapters("default")
-    # The loader follows the base dtype. Temporarily upcast on CPU so fp32
-    # checkpoint values are not rounded to fp16 during adapter injection.
-    unet.float()
-    state = load_file(str(output / "pytorch_lora_weights.safetensors"), device="cpu")
-    StableDiffusionXLPipeline.load_lora_into_unet(state, network_alphas=None, unet=unet,
-                                               adapter_name="default")
-    for param in unet.parameters():
-        if not param.requires_grad:
-            param.data = param.data.half()
-    actual = get_peft_model_state_dict(unet)
+    actual = load_continuation(unet, output / "pytorch_lora_weights.safetensors")
     if set(actual) != set(expected) or any(
             not torch.equal(actual[k].detach().cpu(), expected[k]) for k in expected):
         raise RuntimeError("saved/reloaded adapter mismatch")
@@ -248,8 +363,9 @@ def train(report, output, persist):
     from PIL import Image
     if not torch.cuda.is_available():
         raise RuntimeError("GPU required; no CPU training fallback")
-    torch.manual_seed(1234)
-    torch.cuda.manual_seed_all(1234)
+    config = report["request"]["config"]
+    torch.manual_seed(config["seed"])
+    torch.cuda.manual_seed_all(config["seed"])
     torch.cuda.reset_peak_memory_stats()
     model = Path(report["model"]["path"])
     runtime = report["runtime"]
@@ -325,13 +441,19 @@ def train(report, output, persist):
             if file_hash(original) != row["sha256"]:
                 raise ValueError("source changed while caching")
             with Image.open(original) as image:
-                rgba = image.convert("RGBA").resize((512, 512), Image.Resampling.NEAREST)
-                rgb = Image.alpha_composite(Image.new("RGBA", rgba.size, "white"), rgba).convert("RGB")
+                rgb = prepare_rgb(image, config.get("content_resolution", 512))
             cached = output / f"input-{index + 1}.png"
             rgb.save(cached)
             row["cached_input"] = {"path": cached.name, "sha256": file_hash(cached),
                                    "transform": "64->512 nearest; alpha flattened onto white RGB",
                                    "original_preserved": original.name, "original_sha256": file_hash(original)}
+            if "content_resolution" in config:
+                content = config["content_resolution"]
+                pad = (512 - content) // 2
+                row["cached_input"].update(transform=f"64->{content} nearest; centered 512 white alpha flatten",
+                    resize={"from": [64, 64], "to": [content, content], "filter": "NEAREST"},
+                    padding={"left": pad, "top": pad, "right": pad, "bottom": pad},
+                    background=[255, 255, 255], rgb_sha256=hashlib.sha256(rgb.tobytes()).hexdigest())
             pixels = torch.tensor(list(rgb.getdata()), dtype=torch.float32).reshape(512, 512, 3)
             pixels = (pixels.permute(2, 0, 1).unsqueeze(0).to("cuda") / 127.5) - 1
             latent = vae.encode(pixels).latent_dist.mode() * vae.config.scaling_factor
@@ -352,7 +474,15 @@ def train(report, output, persist):
     report["prediction_type"] = prediction
     unet = UNet2DConditionModel.from_pretrained(str(model / "unet"), torch_dtype=torch.float16, **load)
     unet.requires_grad_(False)
-    unet.add_adapter(LoraConfig(r=4, lora_alpha=4, init_lora_weights=True, target_modules=TARGETS))
+    parent = report.get("continuation")
+    if parent is not None:
+        if (file_hash(parent["path"]) != parent["sha256"] or
+                file_hash(parent["outcome"]) != parent["outcome_sha256"]):
+            raise ValueError("continuation changed after preflight")
+        load_continuation(unet, Path(parent["path"]))
+        report["continuation"]["initial_reload_exact"] = True
+    else:
+        unet.add_adapter(LoraConfig(r=4, lora_alpha=4, init_lora_weights=True, target_modules=TARGETS))
     for name, param in unet.named_parameters():
         if param.requires_grad:
             if ".lora_A." not in name and ".lora_B." not in name:
@@ -369,9 +499,14 @@ def train(report, output, persist):
     report["parameters"] = {"trainable": sum(p.numel() for p in adapters),
                             "frozen": before["parameters"], "targets": TARGETS,
                             "adapter_dtype": "float32", "base_dtype": "float16"}
-    optimizer = torch.optim.AdamW(adapters, lr=1e-4)
+    if "continuation" in report:
+        report["optimizer_initialization"] = "new AdamW state; weights continuation is not optimizer resume"
+        report["initial_adapter_sha256"] = hashlib.sha256(b"".join(
+            k.encode() + initial[k].contiguous().numpy().tobytes() for k in sorted(initial))).hexdigest()
+        report["adapter_update_reference"] = "starting parent weights" if parent else "fresh initializer"
+    optimizer = torch.optim.AdamW(adapters, lr=config["learning_rate"])
     scaler = torch.amp.GradScaler("cuda")
-    generator = torch.Generator(device="cuda").manual_seed(1234)
+    generator = torch.Generator(device="cuda").manual_seed(config["seed"])
     report["steps"] = []
     memory()
     report.update(training_started=True, phase="training")
@@ -418,6 +553,15 @@ def train(report, output, persist):
     if not delta > 0:
         raise RuntimeError("no adapter update")
     report["adapter_update_l1"] = delta
+    if "continuation" in report:
+        report["final_adapter_sha256"] = hashlib.sha256(b"".join(
+            k.encode() + final[k].detach().cpu().contiguous().numpy().tobytes()
+            for k in sorted(final))).hexdigest()
+        if parent is not None:
+            if (file_hash(parent["path"]) != parent["sha256"] or
+                    file_hash(parent["outcome"]) != parent["outcome_sha256"]):
+                raise RuntimeError("continuation inputs changed during training")
+            report["continuation"]["inputs_unchanged"] = True
     report["phase"] = "save_reload"
     persist()
     expected = save_adapter(unet, output)
@@ -435,9 +579,9 @@ def train(report, output, persist):
     memory()
 
 
-def run(request, output, *, pilot=False):
+def run(request, output, *, pilot=False, refine=False):
     output = Path(output).resolve()
-    report = preflight(request, output, pilot=pilot)
+    report = preflight(request, output, pilot=pilot, refine=refine)
     output.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
     report.update(status="running", training_started=False)
@@ -462,7 +606,7 @@ def run(request, output, *, pilot=False):
         report["runtime"]["offline"] = True
         persist()
         train(report, output, persist)
-        report.update(status="pilot_completed_unreviewed" if pilot else "smoke_passed", phase="completed")
+        report.update(status="refinement_completed_unreviewed" if refine else "pilot_completed_unreviewed" if pilot else "smoke_passed", phase="completed")
     except BaseException as error:
         report.update(status="failed", error=f"{type(error).__name__}: {error}")
         # Best effort only: never hide the original OOM/crash/nonfinite error.
@@ -486,10 +630,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--pilot", action="store_true", help="explicit experimental 100-step style pilot")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--refine", action="store_true", help="bounded weights refinement stage")
+    modes.add_argument("--pilot", action="store_true", help="explicit experimental 100-step style pilot")
     args = parser.parse_args()
     try:
-        report = run(args.request, args.output, pilot=args.pilot)
+        report = run(args.request, args.output, pilot=args.pilot, **({"refine": True} if args.refine else {}))
     except (ValueError, RuntimeError, OSError, ImportError) as error:
         parser.exit(2, f"{type(error).__name__}: {error}\n")
     print(json.dumps({"status": report["status"], "quality_assessed": False}))
