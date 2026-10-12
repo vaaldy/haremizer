@@ -75,7 +75,10 @@ class RefinementLoopTests(unittest.TestCase):
             Image.new("RGB", (768, 768), (case["seed"] % 256, 40, 60)).save(path)
             records.append({**case, "file": path.name, "sha256": rl.fingerprint(path), "gpu_memory": {"fixture": True}})
         self.dump(directory / "manifest.json", {"model": self.spec,
-                  "settings": {**self.settings, "device": "cuda"}, "lora": checkpoint,
+                  "settings": {**self.settings, "device": "cuda",
+                               **({"scheduler_class": "EulerAncestralDiscreteScheduler"}
+                                  if self.settings.get("scheduler_override") == "euler_ancestral" else {})},
+                  "lora": checkpoint,
                   "suite_sha256": rl.fingerprint(suite), "records": records})
 
     def child(self, argv, **kwargs):
@@ -131,6 +134,7 @@ class RefinementLoopTests(unittest.TestCase):
         self.assertIsNone(self.loop.state["incumbent"])
         self.assertTrue(all(p["code"] == 0 for p in stage["processes"]))
         self.assertIn("--refine", stage["processes"][0]["argv"])
+        self.assertTrue(all("--scheduler" not in p["argv"] for p in stage["processes"]))
         self.assertEqual(stage["processes"][0]["memory_outcome"], {"fixture": True})
         self.assertIn("10.3.0", Path(stage["processes"][0]["stdout"]).read_text())
         self.assertEqual(self.preflight_mock.call_args.kwargs, {"refine": True})
@@ -139,6 +143,34 @@ class RefinementLoopTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.loop.enqueue(self.request, "cannot bypass review")
         self.assertEqual(rl.Loop(self.loop.directory).state["status"], "needs_visual_review")
+
+    def test_optional_ancestral_scheduler_is_frozen_forwarded_and_verified(self):
+        self.settings["scheduler_override"] = "euler_ancestral"
+        for row in self.plan["suites"] + self.plan["validation_suites"]:
+            path = Path(row["baseline"]) / "manifest.json"
+            report = json.loads(path.read_bytes())
+            report["settings"].update(scheduler_override="euler_ancestral",
+                                      scheduler_class="EulerAncestralDiscreteScheduler")
+            self.dump(path, report)
+        self.dump(self.plan_path, self.plan)
+        self.loop = rl.Loop.init(self.root / "ancestral", self.plan_path)
+        stage = self.stage()
+        for process in stage["processes"][1:]:
+            argv = process["argv"]
+            self.assertEqual(argv[argv.index("--scheduler") + 1], "euler_ancestral")
+        row = self.plan["suites"][0]
+        path = Path(row["baseline"]) / "manifest.json"
+        report = json.loads(path.read_bytes())
+        report["settings"]["scheduler_class"] = "EulerDiscreteScheduler"
+        self.dump(path, report)
+        with self.assertRaisesRegex(ValueError, "settings mismatch"):
+            rl.Loop.manifest(Path(row["baseline"]), Path(row["path"]), self.spec, self.settings, None)
+        for value in (None, True, "euler", "EulerAncestralDiscreteScheduler", []):
+            plan = copy.deepcopy(self.plan)
+            plan["settings"]["scheduler_override"] = value
+            self.dump(self.plan_path, plan)
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "fixed 768"):
+                rl.Loop.init(self.root / "invalid-scheduler", self.plan_path)
 
     def test_negative_and_uncertain_reviews_preserve_incumbent(self):
         for negative, uncertain in ((True, False), (False, True)):

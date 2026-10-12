@@ -101,8 +101,10 @@ class Loop:
                 type(plan["sample_seconds"]) is not int or plan["sample_seconds"] != 600):
             raise ValueError("train_seconds=900 and sample_seconds=600 required")
         settings = plan["settings"]
-        if (set(settings) != {*SETTINGS, "negative_prompt"} or
+        required_settings = {*SETTINGS, "negative_prompt"}
+        if (set(settings) not in (required_settings, required_settings | {"scheduler_override"}) or
                 any(type(settings[k]) is not type(v) or settings[k] != v for k, v in SETTINGS.items()) or
+                ("scheduler_override" in settings and settings["scheduler_override"] != "euler_ancestral") or
                 not isinstance(settings["negative_prompt"], str) or not settings["negative_prompt"].strip()):
             raise ValueError("fixed 768 square/28 steps/CFG5/CPU offload and negative prompt required")
         model = plan["model"]
@@ -284,7 +286,9 @@ class Loop:
         if (report.get("suite_sha256") != fingerprint(Path(suite)) or
                 any(report.get("settings", {}).get(k) != v for k, v in settings.items()) or
                 any(report.get("model", {}).get(k) != v for k, v in model.items()) or
-                report.get("settings", {}).get("device") != "cuda"):
+                report.get("settings", {}).get("device") != "cuda" or
+                (settings.get("scheduler_override") == "euler_ancestral" and
+                 report.get("settings", {}).get("scheduler_class") != "EulerAncestralDiscreteScheduler")):
             raise ValueError("sample/baseline suite, model or settings mismatch")
         lora = report.get("lora")
         if (checkpoint is None and lora is not None) or (checkpoint is not None and
@@ -458,6 +462,8 @@ class Loop:
                         "--width", "768", "--height", "768", "--steps", "28", "--max-cases", "4",
                         "--guidance-scale", "5", "--negative-prompt", self.plan["settings"]["negative_prompt"],
                         "--cpu-offload", "--lora", checkpoint["path"], "--lora-sha256", checkpoint["sha256"]]
+                if "scheduler_override" in self.plan["settings"]:
+                    argv.extend(("--scheduler", self.plan["settings"]["scheduler_override"]))
                 self.process(stage, argv, self.plan["sample_seconds"], f"sample-{index}")
                 report, files = self.manifest(output, Path(suite["frozen"]["path"]), self.plan["model"],
                                               self.plan["settings"], checkpoint)
