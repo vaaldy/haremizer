@@ -1033,6 +1033,65 @@ class SmokePreflightTests(unittest.TestCase):
         altered = {**cache, "gt": cache["gt"] + masked.expand_as(cache["gt"]) * 0.4}
         self.assertTrue(torch.equal(loss, smoke.decoded_feature_loss(vae, latent, altered, 0.13025)))
 
+    def test_query_key_freeze_config_refine_boolean_only(self):
+        request = self.refine_fixture()
+        for value in (False, True):
+            request["config"]["freeze_lora_qk"] = value
+            self.write(request)
+            smoke.preflight(self.request_path, self.output, refine=True)
+        for value in (0, 1, "true", None):
+            request["config"]["freeze_lora_qk"] = value
+            self.write(request)
+            with self.assertRaises(ValueError):
+                smoke.preflight(self.request_path, self.output, refine=True)
+        request = copy.deepcopy(self.request)
+        request["config"]["freeze_lora_qk"] = False
+        self.write(request)
+        with self.assertRaises(ValueError):
+            smoke.preflight(self.request_path, self.output)
+
+    @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU API test")
+    def test_frozen_adapter_qk_optimizer_and_exact_reload_cpu(self):
+        import torch
+        from diffusers import UNet2DConditionModel
+        from peft import LoraConfig
+        unet = UNet2DConditionModel(sample_size=8, in_channels=4, out_channels=4,
+                                   layers_per_block=1, block_out_channels=(32, 32),
+                                   down_block_types=("CrossAttnDownBlock2D", "DownBlock2D"),
+                                   up_block_types=("UpBlock2D", "CrossAttnUpBlock2D"),
+                                   cross_attention_dim=32, attention_head_dim=4).half()
+        unet.requires_grad_(False)
+        unet.add_adapter(LoraConfig(r=4, lora_alpha=4, target_modules=smoke.TARGETS))
+        for p in unet.parameters():
+            if p.requires_grad:
+                p.data = p.data.float()
+        count = smoke.freeze_adapter_query_keys(unet)
+        self.assertGreater(count, 0)
+        frozen = {k:p.detach().clone() for k,p in unet.named_parameters() if not p.requires_grad}
+        query = {k:p.detach().clone() for k,p in unet.named_parameters()
+                 if "lora_" in k and (".to_q." in k or ".to_k." in k)}
+        unet.disable_adapters()
+        unet.enable_adapters()
+        smoke.freeze_adapter_query_keys(unet)
+        optimized = [p for p in unet.parameters() if p.requires_grad]
+        self.assertTrue(optimized)
+        optimizer = torch.optim.AdamW(optimized, lr=1e-4)
+        sum(p.square().sum() for p in optimized).backward()
+        optimizer.step()
+        actual = {k:p for k,p in unet.named_parameters() if not p.requires_grad}
+        self.assertEqual(set(frozen), set(actual))
+        self.assertTrue(all(torch.equal(p, actual[k]) for k,p in frozen.items()))
+        self.assertTrue(all(p.grad is None and not p.requires_grad and torch.equal(p,query[k])
+                            for k,p in unet.named_parameters() if k in query))
+        self.output.mkdir()
+        expected = smoke.save_adapter(unet, self.output)
+        smoke.reload_adapter(unet, self.output, expected)
+        smoke.freeze_adapter_query_keys(unet)
+        actual = {k:p for k,p in unet.named_parameters() if not p.requires_grad}
+        self.assertEqual(set(frozen), set(actual))
+        self.assertTrue(all(torch.equal(p, actual[k]) for k,p in frozen.items()))
+        self.assertTrue(all(p.dtype==torch.float32 for k,p in unet.named_parameters() if k in query))
+
     def test_decoded_ink_config_bounds_and_dependency(self):
         request = self.refine_fixture()
         request["config"]["decoded_feature_loss_weight"] = 0.1

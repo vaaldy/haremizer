@@ -95,7 +95,8 @@ def preflight(request_path, output, *, pilot=False, refine=False):
                   *({"decoded_feature_loss_weight"} if refine and "decoded_feature_loss_weight" in config else set()),
                   *({"caption_dropout_probability"} if refine and "caption_dropout_probability" in config else set()),
                   *({"snr_gamma"} if refine and "snr_gamma" in config else set()),
-                  *({"decoded_ink_weight"} if refine and "decoded_ink_weight" in config else set())}, "config")
+                  *({"decoded_ink_weight"} if refine and "decoded_ink_weight" in config else set()),
+                  *({"freeze_lora_qk"} if refine and "freeze_lora_qk" in config else set())}, "config")
     fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate", "resolution")}
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
            config[k] != v for k, v in fixed.items()):
@@ -113,6 +114,8 @@ def preflight(request_path, output, *, pilot=False, refine=False):
         weight = config["prior_preservation_weight"]
         if type(weight) not in (int, float) or not 0 <= weight <= 1 or not math.isfinite(weight):
             raise ValueError("prior_preservation_weight must be finite 0..1")
+    if type(config.get("freeze_lora_qk", False)) is not bool:
+        raise ValueError("freeze_lora_qk must be a boolean")
     snr_gamma = config.get("snr_gamma")
     if snr_gamma is not None and (type(snr_gamma) not in (int, float) or
             not 0 < snr_gamma <= 20 or not math.isfinite(snr_gamma)):
@@ -557,6 +560,18 @@ def base_prediction(unet, noisy, timestep, conditioning):
         unet.train(training)
 
 
+def freeze_adapter_query_keys(unet):
+    """Keep existing Q/K adapter tensors in checkpoints but remove them from optimization."""
+    count = 0
+    for name, param in unet.named_parameters():
+        if "lora_" in name and (".to_q." in name or ".to_k." in name):
+            param.requires_grad_(False)
+            count += param.numel()
+    if count == 0:
+        raise RuntimeError("no query/key adapter parameters found")
+    return count
+
+
 def save_adapter(unet, output):
     from diffusers import StableDiffusionXLPipeline
     from diffusers.utils import convert_state_dict_to_diffusers
@@ -780,6 +795,7 @@ def train(report, output, persist):
             if ".lora_A." not in name and ".lora_B." not in name:
                 raise RuntimeError("unexpected non-adapter trainable parameter")
             param.data = param.data.float()
+    fixed_qk = freeze_adapter_query_keys(unet) if config.get("freeze_lora_qk", False) else 0
     before = frozen_hash(unet)
     report["frozen_before"] = before
     initial = {k: v.detach().cpu().clone() for k, v in get_peft_model_state_dict(unet).items()}
@@ -790,7 +806,10 @@ def train(report, output, persist):
         raise RuntimeError("no trainable adapters")
     report["parameters"] = {"trainable": sum(p.numel() for p in adapters),
                             "frozen": before["parameters"], "targets": TARGETS,
-                            "adapter_dtype": "float32", "base_dtype": "float16"}
+                            "adapter_dtype": "float32", "base_dtype": "float16",
+                            **({"fixed_adapter_query_key_parameters": fixed_qk,
+                                "optimized_adapter_scope": "value/output only; query/key adapters frozen fp32"}
+                               if fixed_qk else {})}
     if "continuation" in report:
         report["optimizer_initialization"] = "new AdamW state; weights continuation is not optimizer resume"
         report["initial_adapter_sha256"] = hashlib.sha256(b"".join(
@@ -825,6 +844,9 @@ def train(report, output, persist):
         conditioning = {"encoder_hidden_states": item["tokens"],
                         "added_cond_kwargs": {"text_embeds": item["pooled"], "time_ids": item["time_ids"]}}
         prior = base_prediction(unet, noisy, timestep, conditioning) if prior_weight else None
+        if config.get("freeze_lora_qk", False):
+            # PEFT adapter enable/disable can reset parameter gradient flags.
+            freeze_adapter_query_keys(unet)
         if prior is not None:
             finite(prior)
             memory()
@@ -918,6 +940,8 @@ def train(report, output, persist):
     gc.collect()
     torch.cuda.empty_cache()
     reload_adapter(unet, output, expected)
+    if config.get("freeze_lora_qk", False):
+        freeze_adapter_query_keys(unet)
     if frozen_hash(unet) != before:
         raise RuntimeError("frozen parameters changed during reload")
     report["checkpoint"] = {"path": "pytorch_lora_weights.safetensors",

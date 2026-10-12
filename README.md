@@ -40,6 +40,13 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **21** completed GT ink-weight4 supervision without numeric failures.
+  All-eight/native64 review found insufficient practical gain; no promotion.
+  Nine GPU checks are archived. The next investigation preserves query/key
+  adapter weights while optimizing value/output weights, with CPU optimizer and
+  exact save/reload proof before any new GPU budget. Indirect geometry changes
+  remain possible; fixed parameters are not a layout guarantee.
+
 - Global **20** produced larger adaptation changes at LR1e-4, including mouth
   shape/color shifts and an unrequested accessory; it is not promoted. The final
   slot of this declared batch targets actual licensed GT near-black facial ink
@@ -822,6 +829,15 @@ Source prior and decoded terms are unchanged. Both weighted/unweighted noise
 loss, SNR and scalar weight are recorded. This balances timesteps; it does not
 prove bold features, proportions, alpha or generalization. Unsupported terminal
 alpha values fail rather than silently inventing a numeric correction.
+
+Optional refine-only boolean `freeze_lora_qk` defaults false. True keeps all
+query/key adapter tensors in the saved checkpoint but freezes them before the
+optimizer/frozen-parameter snapshot; only value/output adapter tensors receive
+updates. The policy is reapplied after prior-prediction adapter toggles and after
+actual adapter reload, preserving fp32
+query/key values and including them in the exhaustive frozen hash. No new
+modules or inference adapter format are introduced. This tests appearance versus
+spatial-parameter adaptation, not hard anatomical/layout preservation.
 
 Refinement requests also require `continuation`, either `null` for the unchanged
 fresh-base LoRA initializer or exactly:
