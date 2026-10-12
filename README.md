@@ -40,6 +40,13 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Autonomous global **14** completed the 50-step decoded-feature safety stage:
+  CPU→GPU backward worked, frozen VAE/base and exact reload passed, and all four
+  sources received active auxiliary steps (11 total). All eight actual/native64
+  outputs remained near baseline without new major geometry regression; this
+  is not model acceptance. One explicit 100-step continuation is queued to test
+  the same objective at 150 cumulative updates, with new Adam state disclosed.
+
 - Autonomous global experiment **13** retained every facial150 setting except
   integer-grid content768. Numerical/frozen/reload checks passed, but actual64
   inspection found no reliable automatic bold-feature gain; crops, pale nose
