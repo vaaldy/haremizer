@@ -411,6 +411,17 @@ the pipeline and recorded in manifest `settings`; frozen suite bytes, positive
 prompts, and seeds are unchanged. Outputs remain raw inference PNGs, not
 validated sprites or quality acceptance.
 
+Optional `--scheduler euler_ancestral` (Python `scheduler=None` by default) is
+an explicit diagnostic override, not a quality-improvement claim. Omission
+preserves the locally cached scheduler. The only override uses standard
+`EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)` after
+local loading and before GPU placement/offload; it does not modify the model
+cache or weights. Manifest `settings.scheduler_class` records the actual selected
+class and `settings.scheduler_override` records the explicit choice or `null`.
+Compare new diagnostic baselines and candidates with matching scheduler settings;
+older manifests lack this metadata. No prompts, seeds, steps, CFG or dimensions
+are changed by the override. Outputs remain raw PNGs, not quality acceptance.
+
 Optional `--lora /local/path/pytorch_lora_weights.safetensors` and
 `--lora-sha256 FULL_LOWERCASE_64_HEX_SHA256` must be supplied together (Python
 keywords: `lora=None`, `lora_sha256=None`). The adapter must be a real nonempty

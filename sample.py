@@ -83,7 +83,9 @@ def validate_lora(lora, lora_sha256):
 def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, steps=20,
            width=None, height=None, variant=None, device="cuda", cpu_offload=False,
            model_id=None, revision=None, negative_prompt=None, guidance_scale=7.5,
-           lora=None, lora_sha256=None):
+           lora=None, lora_sha256=None, scheduler=None):
+    if scheduler is not None and (type(scheduler) is not str or scheduler != "euler_ancestral"):
+        raise ValueError("scheduler must be None or 'euler_ancestral'")
     if negative_prompt is not None and (not isinstance(negative_prompt, str) or
                                         not negative_prompt.strip()):
         raise ValueError("negative_prompt must be None or a nonblank string")
@@ -126,6 +128,8 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
     pipeline = getattr(diffusers, identity["class"]).from_pretrained(
         str(model), local_files_only=True, use_safetensors=True, torch_dtype=torch.float16,
         **({"variant": variant} if variant else {}))
+    if scheduler == "euler_ancestral":
+        pipeline.scheduler = diffusers.EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)
     if lora_path is not None:
         validate_lora(lora_path, lora_sha256)
         pipeline.load_lora_weights(str(lora_path.parent), weight_name=lora_path.name,
@@ -141,6 +145,8 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
               "settings": {"steps": steps, "width": width, "height": height,
                            "max_cases": max_cases, "dtype": "float16", "device": device,
                            "variant": variant, "model_cpu_offload": cpu_offload,
+                           "scheduler_class": type(pipeline.scheduler).__name__,
+                           "scheduler_override": scheduler,
                            "negative_prompt": negative_prompt,
                            "guidance_scale": guidance_scale, "num_images_per_prompt": 1},
               "runtime": {"torch": torch.__version__, "diffusers": diffusers.__version__,
@@ -195,6 +201,8 @@ def main():
     parser.add_argument("--negative-prompt", help="nonblank negative prompt; omitted by default")
     parser.add_argument("--guidance-scale", type=float, default=7.5,
                         help="finite guidance scale from 1..15 (default: 7.5)")
+    parser.add_argument("--scheduler", choices=("euler_ancestral",),
+                        help="explicit local scheduler override; omitted preserves cached scheduler")
     parser.add_argument("--variant", choices=("fp16",))
     parser.add_argument("--device", choices=("cuda",), default="cuda", help="CUDA or ROCm; GPU 0 only")
     parser.add_argument("--cpu-offload", action="store_true")

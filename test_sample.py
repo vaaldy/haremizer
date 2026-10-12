@@ -17,6 +17,15 @@ import sample
 SUITE = Path(__file__).with_name("evaluation-suite.json")
 
 
+class EulerDiscreteScheduler:
+    def __init__(self):
+        self.config = {"mock_config": True}
+
+
+class EulerAncestralDiscreteScheduler:
+    pass
+
+
 class SamplingTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -37,6 +46,9 @@ class SamplingTests(unittest.TestCase):
         self.lora_sha256 = hashlib.sha256(self.lora.read_bytes()).hexdigest()
         self.output = self.root / "output"
         self.pipeline = MagicMock()
+        self.pipeline.scheduler = EulerDiscreteScheduler()
+        self.scheduler_factory = MagicMock()
+        self.scheduler_factory.from_config.return_value = EulerAncestralDiscreteScheduler()
         self.pipeline.side_effect = lambda **kw: SimpleNamespace(
             images=[Image.new("RGB", (kw["width"], kw["height"]), "red")])
         self.loader = MagicMock()
@@ -52,7 +64,8 @@ class SamplingTests(unittest.TestCase):
         self.torch.Generator.side_effect = lambda **kw: SimpleNamespace(
             manual_seed=lambda seed: (kw["device"], seed))
         self.diffusers = SimpleNamespace(__version__="mock-diffusers",
-            StableDiffusionPipeline=self.loader, StableDiffusionXLPipeline=self.loader)
+            StableDiffusionPipeline=self.loader, StableDiffusionXLPipeline=self.loader,
+            EulerAncestralDiscreteScheduler=self.scheduler_factory)
 
     def write_index(self):
         (self.model / "model_index.json").write_text(json.dumps(self.index))
@@ -75,6 +88,11 @@ class SamplingTests(unittest.TestCase):
         self.pipeline.enable_model_cpu_offload.assert_not_called()
         self.pipeline.load_lora_weights.assert_not_called()
         self.assertIsNone(report["lora"])
+        self.scheduler_factory.from_config.assert_not_called()
+        self.assertEqual(report["settings"]["scheduler_class"], "EulerDiscreteScheduler")
+        self.assertIsNone(report["settings"]["scheduler_override"])
+        self.assertNotIn("scheduler", self.loader.from_pretrained.call_args.kwargs)
+        self.assertNotIn("scheduler", self.pipeline.call_args.kwargs)
         self.assertEqual(self.pipeline.call_args.kwargs["generator"], ("cuda", 9))
         self.assertEqual(self.pipeline.call_args.kwargs["num_inference_steps"], 20)
         self.assertIsNone(self.pipeline.call_args.kwargs["negative_prompt"])
@@ -152,6 +170,56 @@ class SamplingTests(unittest.TestCase):
                 self.assertFalse(report["visual_quality_assessed"])
                 self.assertFalse(report["sprite_format_validated"])
                 self.assertEqual(report["settings"]["dtype"], "float16")
+
+    def test_scheduler_override_uses_loaded_config_before_placement(self):
+        for offload in (False, True):
+            with self.subTest(cpu_offload=offload):
+                self.output = self.root / f"scheduler-output-{offload}"
+                original = EulerDiscreteScheduler()
+                self.pipeline.scheduler = original
+                order = MagicMock()
+                order.attach_mock(self.loader.from_pretrained, "load")
+                order.attach_mock(self.scheduler_factory.from_config, "scheduler")
+                placement = (self.pipeline.enable_model_cpu_offload if offload else self.pipeline.to)
+                order.attach_mock(placement, "place")
+                placement.side_effect = lambda *args, **kwargs: self.assertIs(
+                    self.pipeline.scheduler, self.scheduler_factory.from_config.return_value)
+                report = self.run_sample(prompt="test", scheduler="euler_ancestral",
+                                         cpu_offload=offload)
+                self.assertIs(self.scheduler_factory.from_config.call_args.args[0], original.config)
+                self.scheduler_factory.from_config.assert_called_with(original.config)
+                self.assertEqual([call[0] for call in order.mock_calls], ["load", "scheduler", "place", "load()"])
+                self.loader.from_pretrained.assert_called_with(
+                    str(self.model), local_files_only=True, use_safetensors=True,
+                    torch_dtype=self.torch.float16)
+                self.assertEqual(report["settings"]["scheduler_class"], "EulerAncestralDiscreteScheduler")
+                self.assertEqual(report["settings"]["scheduler_override"], "euler_ancestral")
+                self.assertEqual(json.loads((self.output / "manifest.json").read_text()), report)
+                self.assertNotIn("scheduler", self.pipeline.call_args.kwargs)
+                self.assertFalse(report["visual_quality_assessed"])
+                self.assertFalse(report["training_started"])
+
+    def test_invalid_scheduler_fails_before_ml_import(self):
+        with patch.dict(sys.modules, {"torch": None, "diffusers": None}):
+            for value in ("", "EulerAncestralDiscreteScheduler", "euler", True, 1, [], {}):
+                with self.subTest(scheduler=value), self.assertRaisesRegex(ValueError, "scheduler"):
+                    sample.sample(self.model, self.output, prompt="test", scheduler=value)
+        self.assertFalse(self.output.exists())
+        self.loader.from_pretrained.assert_not_called()
+
+    def test_scheduler_cli_choice_and_default(self):
+        args = ["sample.py", "--model", str(self.model), "--output", str(self.output),
+                "--prompt", "test"]
+        for extra, expected in (([], None), (["--scheduler", "euler_ancestral"], "euler_ancestral")):
+            with patch.object(sys, "argv", args + extra), patch.object(sample, "sample", return_value={}) as run:
+                with patch("builtins.print"):
+                    sample.main()
+            self.assertEqual(run.call_args.kwargs["scheduler"], expected)
+        with patch.object(sys, "argv", args + ["--scheduler", "euler"]), patch.object(sample, "sample") as run:
+            with patch("sys.stderr"), self.assertRaises(SystemExit) as error:
+                sample.main()
+            self.assertEqual(error.exception.code, 2)
+            run.assert_not_called()
 
     def test_invalid_lora_fails_before_ml_import(self):
         empty = self.root / "empty.safetensors"
@@ -317,6 +385,7 @@ runpy.run_path('sample.py', run_name='__main__')
         result = subprocess.run([sys.executable, "-B", "-c", code],
                                 cwd=Path(__file__).parent, capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--scheduler", result.stdout)
         self.assertIn("--cpu-offload", result.stdout)
         self.assertIn("--suite", result.stdout)
         self.assertIn("--negative-prompt", result.stdout)
