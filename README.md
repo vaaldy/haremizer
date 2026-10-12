@@ -631,6 +631,39 @@ not a guarantee of preserved geometry or style; both losses are separately
 recorded and actual visual comparison must detect style erasure/regression.
 Predeclare the weight per request; initial experiment is 0.1 for 50 steps.
 
+An optional **refine-only** `facial_loss_weight` (finite numeric 1..4, default 1)
+weights source-annotated facial denoising errors. Weight 1 uses exactly the legacy
+Torch MSE path, without a mask cache. At weight >1, **every training example**
+must include `facial_regions`, a list of 1..8 manually supplied rectangles such as
+`[{"x":18,"y":22,"width":28,"height":20}]`. Coordinates are native 64px,
+strict integers (not booleans), with positive extents wholly inside the source;
+x/y are 0..63 and right/bottom endpoints are exclusive. Overlaps form a binary
+union, never multiply weights. Annotations are optional but validated at weight
+1; heldout rows, smoke and pilot requests cannot carry them. These are supplied
+source annotations, not detected landmarks or claimed human review.
+
+Masks follow the exact content nearest-neighbor resize and centered padding of
+`prepare_rgb`, then nearest-neighbor downsampling to the actual 64×64 or 96×96
+latent grid. Padding is unselected; source annotations are independent of alpha.
+Each source caches only one fp32 `1 + (weight - 1) * mask` CPU tensor (at most
+36 KiB; at most 16 sources), transferring only the current source's tensor to GPU.
+The noise/velocity loss is `sum(weights * squared_error) / sum(expanded_weights)`
+across batch/channels/spatial dimensions: outside weight remains 1 and the global
+loss scale is normalized rather than implicitly multiplying the learning rate.
+The detached source-only prior term is unchanged. No VAE decode gradients,
+new model/detection, heldout geometry/loss, generated-image feedback, or pixel
+postprocessing is introduced.
+
+Outcome evidence records source hashes/regions, content/padding/latent layout,
+binary-mask hash and selected-pixel count, cache size, weight, and per-step
+`weighted_noise_loss` plus source hash. Reconstructing the documented mapping
+allows auditing mask placement against cached input layout. This is a learned
+weighted-noise objective, **not a guarantee of bold eye/nose/mouth contrast,
+strict proportions, or unclipped heads**. Any new explicit retraining needs a
+separately bounded source-annotated pilot and independent visual evaluation;
+it is not a robust model or promotion. The completed original 12-hour work
+window above is archival, not a reusable clock for a renewed request.
+
 Refinement requests also require `continuation`, either `null` for the unchanged
 fresh-base LoRA initializer or exactly:
 

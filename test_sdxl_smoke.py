@@ -454,6 +454,135 @@ class SmokePreflightTests(unittest.TestCase):
             trainer.assert_not_called()
             self.assertFalse(self.output.exists())
 
+    def test_facial_refine_annotations_preflight_without_ml(self):
+        import builtins
+        original = builtins.__import__
+
+        def guard(name, *args, **kwargs):
+            if name.split(".")[0] in {"torch", "diffusers", "transformers", "peft", "accelerate"}:
+                raise AssertionError("preflight imported ML")
+            return original(name, *args, **kwargs)
+
+        request = self.refine_fixture()
+        regions = [{"x": 12, "y": 20, "width": 30, "height": 16}]
+        for row in request["examples"]:
+            row["facial_regions"] = regions
+        for weight in (1, 3.0, 4):
+            request["config"]["facial_loss_weight"] = weight
+            self.write(request)
+            with patch("builtins.__import__", side_effect=guard):
+                report = smoke.preflight(self.request_path, self.output, refine=True)
+            self.assertEqual(report["inputs"][0]["facial_regions"], regions)
+            self.assertTrue(all("facial_regions" not in r for r in report["heldout_inputs"]))
+        self.assertFalse(self.output.exists())
+
+    def test_invalid_facial_requests_block_before_ml(self):
+        import builtins
+        original = builtins.__import__
+
+        def guard(name, *args, **kwargs):
+            if name.split(".")[0] in {"torch", "diffusers", "transformers", "peft", "accelerate"}:
+                raise AssertionError("invalid request imported ML")
+            return original(name, *args, **kwargs)
+
+        base = self.refine_fixture()
+        base["config"]["facial_loss_weight"] = 3
+        region = {"x": 12, "y": 20, "width": 30, "height": 16}
+        for row in base["examples"]:
+            row["facial_regions"] = [region.copy()]
+        cases = []
+        for weight in (0, 4.01, True, "3", float("nan"), float("inf"), 10**400):
+            request = copy.deepcopy(base)
+            request["config"]["facial_loss_weight"] = weight
+            cases.append(request)
+        for regions in (None, [], [region] * 9, [{**region, "extra": 1}],
+                        *([{**region, key: value}] for key, value in
+                          (("x", -1), ("x", 64), ("y", 64), ("width", 0),
+                           ("width", 53), ("height", 45), ("x", True), ("y", 1.5),
+                           ("width", float("nan"))))):
+            request = copy.deepcopy(base)
+            request["examples"][0]["facial_regions"] = regions
+            cases.append(request)
+        request = copy.deepcopy(base)
+        request["config"]["facial_loss_weight"] = 1
+        request["examples"][0]["facial_regions"] = []
+        cases.append(request)
+        request = copy.deepcopy(base)
+        request["examples"][0].pop("facial_regions")
+        cases.append(request)
+        request = copy.deepcopy(base)
+        request["heldout_examples"][0]["facial_regions"] = [region]
+        cases.append(request)
+        with patch("builtins.__import__", side_effect=guard), patch.object(smoke, "train") as trainer:
+            for request in cases:
+                self.write(request)
+                with self.subTest(request=request), self.assertRaises(ValueError):
+                    smoke.run(self.request_path, self.output, refine=True)
+                self.assertFalse(self.output.exists())
+            trainer.assert_not_called()
+        for pilot in (False, True):
+            for feature in ("config", "regions"):
+                request = self.pilot_fixture() if pilot else copy.deepcopy(self.request)
+                if feature == "config":
+                    request["config"]["facial_loss_weight"] = 1
+                else:
+                    request["examples"][0]["facial_regions"] = [region]
+                self.write(request)
+                with self.assertRaises(ValueError):
+                    smoke.preflight(self.request_path, self.output, pilot=pilot)
+
+    def test_facial_mask_exact_layout_union_and_native_size_first(self):
+        regions = [{"x": 16, "y": 16, "width": 32, "height": 32}]
+        source = Image.new("RGBA", (64, 64), "black")
+        from PIL import ImageDraw
+        ImageDraw.Draw(source).rectangle((16, 16, 47, 47), fill="white")
+        for resolution, contents in ((512, (384, 448, 512)), (768, (576, 672, 768))):
+            for content in contents:
+                latent_size = (resolution // 8,) * 2
+                mask = smoke.facial_mask(regions, content, resolution, latent_size)
+                rgb = smoke.prepare_rgb(source, content, resolution)
+                # prepare_rgb pads white; independently clear only that padding for comparison.
+                pad = (resolution - content) // 2
+                expected = Image.new("L", (resolution, resolution), 0)
+                expected.paste(rgb.convert("L").crop((pad, pad, pad + content, pad + content)), (pad, pad))
+                expected = expected.resize(latent_size, Image.Resampling.NEAREST)
+                self.assertEqual(bytes(v * 255 for v in mask.getdata()), expected.tobytes())
+                union = smoke.facial_mask(regions + [{"x": 24, "y": 24, "width": 16, "height": 16}],
+                                          content, resolution, latent_size)
+                self.assertEqual(mask.tobytes(), union.tobytes())
+                self.assertEqual(mask.getpixel((0, 0)), 0)
+        request = self.refine_fixture()
+        request["config"]["facial_loss_weight"] = 3
+        row = request["examples"][0]
+        row["facial_regions"] = []
+        Image.new("RGBA", (48, 48)).save(row["path"])
+        row["sha256"] = smoke.file_hash(row["path"])
+        self.write(request)
+        with self.assertRaisesRegex(ValueError, "64x64"):
+            smoke.preflight(self.request_path, self.output, refine=True)
+
+    @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU helper test")
+    def test_real_torch_facial_weighted_loss_cpu(self):
+        import torch
+        mask = smoke.facial_mask([{"x": 0, "y": 0, "width": 32, "height": 64}], 512, 512, (64, 64))
+        weights = smoke.facial_weights(mask, 3)
+        self.assertEqual(set(weights.flatten().tolist()), {1, 3})
+        self.assertEqual(weights[0, 0, 0, 63].item(), 1)
+        target = torch.zeros((2, 4, 64, 64))
+        selected = target.clone().requires_grad_()
+        with torch.no_grad():
+            selected[:, :, :, :32] = 2
+        outside = target.clone()
+        outside[:, :, :, 32:] = 2
+        selected_loss = smoke.denoising_loss(selected, target, weights)
+        self.assertEqual(selected_loss.item(), 3)
+        self.assertEqual(smoke.denoising_loss(outside, target, weights).item(), 1)
+        selected_loss.backward()
+        self.assertGreater(selected.grad.abs().sum().item(), 0)
+        prediction = torch.randn_like(target)
+        self.assertTrue(torch.equal(smoke.denoising_loss(prediction, target),
+                                    torch.nn.functional.mse_loss(prediction.float(), target.float())))
+
     def test_detached_base_prediction_restores_adapter_and_training_state(self):
         from contextlib import contextmanager, nullcontext
         from types import SimpleNamespace

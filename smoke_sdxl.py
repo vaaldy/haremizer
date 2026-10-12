@@ -89,7 +89,8 @@ def preflight(request_path, output, *, pilot=False, refine=False):
         raise ValueError("record the existing broad user authorization; do not invent human approval")
     config = request["config"]
     keys(config, {*CONFIG, "steps", *({"content_resolution"} if refine else set()),
-                  *({"prior_preservation_weight"} if refine and "prior_preservation_weight" in config else set())}, "config")
+                  *({"prior_preservation_weight"} if refine and "prior_preservation_weight" in config else set()),
+                  *({"facial_loss_weight"} if refine and "facial_loss_weight" in config else set())}, "config")
     fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate", "resolution")}
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
            config[k] != v for k, v in fixed.items()):
@@ -107,6 +108,10 @@ def preflight(request_path, output, *, pilot=False, refine=False):
         weight = config["prior_preservation_weight"]
         if type(weight) not in (int, float) or not 0 <= weight <= 1 or not math.isfinite(weight):
             raise ValueError("prior_preservation_weight must be finite 0..1")
+    facial_weight = config.get("facial_loss_weight", 1)
+    if (type(facial_weight) not in (int, float) or not 1 <= facial_weight <= 4 or
+            not math.isfinite(facial_weight)):
+        raise ValueError("facial_loss_weight must be finite 1..4")
     if type(config["steps"]) is not int or not (
             50 <= config["steps"] <= 600 if refine else
             config["steps"] == 100 if pilot else 1 <= config["steps"] <= 2):
@@ -198,6 +203,8 @@ def preflight(request_path, output, *, pilot=False, refine=False):
                             "source_page"}
             if style:
                 example_keys.add("identity_group")
+            if refine and name == "examples" and "facial_regions" in row:
+                example_keys.add("facial_regions")
             keys(row, example_keys, "example")
             if style and not nonempty(row["identity_group"]):
                 raise ValueError("nonblank identity_group required")
@@ -235,6 +242,11 @@ def preflight(request_path, output, *, pilot=False, refine=False):
                         if pattern_hash in seen_patterns:
                             raise ValueError("duplicate pixel pattern under a whole-image palette recolor")
                         seen_patterns.add(pattern_hash)
+            if refine and name == "examples":
+                if "facial_regions" in row:
+                    validate_facial_regions(row["facial_regions"])
+                elif facial_weight > 1:
+                    raise ValueError("facial_regions required on every weighted training example")
             records.append({**row, "path": str(image), "source_page": {**source, "path": str(page)},
                             **({"pixel_sha256": pixel_hash,
                                 "palette_pattern_sha256": pattern_hash} if style else {})})
@@ -318,6 +330,48 @@ def prepare_rgb(image, content_resolution=512, resolution=512):
     return canvas.convert("RGB")
 
 
+def validate_facial_regions(regions):
+    if not isinstance(regions, list) or not 1 <= len(regions) <= 8:
+        raise ValueError("facial_regions requires 1..8 source rectangles")
+    for region in regions:
+        keys(region, {"x", "y", "width", "height"}, "facial region")
+        if (any(type(value) is not int for value in region.values()) or
+                not 0 <= region["x"] < 64 or not 0 <= region["y"] < 64 or
+                not 1 <= region["width"] <= 64 - region["x"] or
+                not 1 <= region["height"] <= 64 - region["y"]):
+            raise ValueError("facial region requires integer bounds inside native 64x64")
+
+
+def facial_mask(regions, content_resolution, resolution, latent_size):
+    """Union of source rectangles, with the exact prepare_rgb resize/padding layout."""
+    from PIL import Image, ImageDraw
+    validate_facial_regions(regions)
+    mask = Image.new("L", (64, 64), 0)
+    draw = ImageDraw.Draw(mask)
+    for region in regions:
+        x, y, width, height = (region[k] for k in ("x", "y", "width", "height"))
+        draw.rectangle((x, y, x + width - 1, y + height - 1), fill=1)
+    content = mask.resize((content_resolution, content_resolution), Image.Resampling.NEAREST)
+    canvas = Image.new("L", (resolution, resolution), 0)
+    padding = (resolution - content_resolution) // 2
+    canvas.paste(content, (padding, padding))
+    return canvas.resize(latent_size, Image.Resampling.NEAREST)
+
+
+def facial_weights(mask, weight):
+    import torch
+    binary = torch.tensor(list(mask.getdata()), dtype=torch.float32).reshape(1, 1, mask.height, mask.width)
+    return 1 + (weight - 1) * binary
+
+
+def denoising_loss(predicted, target, weights=None):
+    import torch
+    if weights is None:
+        return torch.nn.functional.mse_loss(predicted.float(), target.float())
+    squared = (predicted.float() - target.float()).square()
+    return (squared * weights).sum() / weights.expand_as(squared).sum()
+
+
 def load_continuation(unet, path):
     import torch
     from diffusers import StableDiffusionXLPipeline
@@ -385,6 +439,11 @@ def train(report, output, persist):
         raise RuntimeError("GPU required; no CPU training fallback")
     config = report["request"]["config"]
     resolution = config["resolution"]
+    facial_weight = config.get("facial_loss_weight", 1)
+    if facial_weight > 1:
+        report["facial_loss"] = {"weight": facial_weight,
+            "scope": "source-annotated training-only weighted noise/velocity MSE; rectangle union; no detection or heldout geometry",
+            "normalization": "sum(weight * squared error) / sum(weights expanded over batch and channels)"}
     time_ids = [resolution, resolution, 0, 0, resolution, resolution]
     torch.manual_seed(config["seed"])
     torch.cuda.manual_seed_all(config["seed"])
@@ -481,6 +540,18 @@ def train(report, output, persist):
             latent = vae.encode(pixels).latent_dist.mode() * vae.config.scaling_factor
             finite(latent, item["pooled"], *item["tokens"])
             item["latents"] = latent.cpu().to(torch.float16)
+            if facial_weight > 1:
+                mask = facial_mask(row["facial_regions"], config["content_resolution"], resolution,
+                                   (latent.shape[-1], latent.shape[-2]))
+                item["facial_weights"] = facial_weights(mask, facial_weight)
+                row["cached_facial_mask"] = {
+                    "source_sha256": row["sha256"], "regions": row["facial_regions"],
+                    "mapping": "64px binary rectangle union -> content NEAREST -> centered zero padding -> latent NEAREST; independent of alpha",
+                    "content_resolution": config["content_resolution"], "resolution": resolution,
+                    "padding": (resolution - config["content_resolution"]) // 2,
+                    "latent_size": list(mask.size), "binary_sha256": hashlib.sha256(mask.tobytes()).hexdigest(),
+                    "selected_latent_pixels": sum(mask.getdata()),
+                    "weight": facial_weight, "cpu_cache_bytes": item["facial_weights"].numel() * 4}
             item["tokens"] = torch.cat(item["tokens"], dim=-1)
             item["time_ids"] = torch.tensor([time_ids], dtype=torch.float16)
         del pixels, latent, vae
@@ -553,7 +624,7 @@ def train(report, output, persist):
             memory()
         with torch.autocast("cuda", dtype=torch.float16):
             predicted = unet(noisy, timestep, **conditioning).sample
-            noise_loss = torch.nn.functional.mse_loss(predicted.float(), target.float())
+            noise_loss = denoising_loss(predicted, target, item.get("facial_weights"))
             prior_loss = (torch.nn.functional.mse_loss(predicted.float(), prior.float())
                           if prior is not None else noise_loss.new_zeros(()))
             loss = noise_loss + prior_weight * prior_loss
@@ -573,6 +644,9 @@ def train(report, output, persist):
         memory()
         report["steps"].append({"optimizer_step": step + 1, "loss": loss.item(),
                                 "noise_loss": noise_loss.item(), "prior_loss": prior_loss.item(),
+                                **({"weighted_noise_loss": noise_loss.item(),
+                                    "source_sha256": report["inputs"][step % len(cache)]["sha256"]}
+                                   if facial_weight > 1 else {}),
                                 "gradient_norm_before_clip": norm.item(),
                                 "seconds": time.monotonic() - started})
         persist()
