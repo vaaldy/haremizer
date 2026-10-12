@@ -36,6 +36,29 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- The 2026-10-12 overnight work completed nine weight-training stages and one
+  paired sampler diagnostic. **No model is quality-accepted or robust.** The
+  original work deadline remains `2026-10-12T11:57:11Z`; changing trainer/data
+  regimes did not reset it. Storage remained about 72.8 GB including reserve.
+- The original-corpus 400-update checkpoint remains the strongest **unpromoted**
+  rollback candidate. Extra padding, matched 768px training, source-only prior
+  anchoring, and a corrected uncropped-reference corpus did not pass visual
+  gates: head clipping, descriptor/background failures, or eye regressions
+  persisted. Those fitting regimes are stopped, not automatically extended.
+- A bounded byte-range audit found three cached UNet tensor samples matching
+  Animagine OPT rather than ORIGINAL. This is not complete pipeline identity
+  proof, but does not justify downloading OPT as an unexplored alternative.
+- The recommended Euler Ancestral diagnostic compared eight fixed descriptors
+  with unloaded baseline and unchanged 400-update weights. All four batches
+  completed, after a preserved dispatcher-schema failure and authorized recovery.
+  Actual image/64px-preview inspection found some cleaner backgrounds and useful
+  learned styling/skin/hair gains, but persistent crops and adherence failures.
+  This is evaluation evidence, not another weight-training success or promotion.
+  Hash-bound review: `runs/refinement-overnight-20261012/scheduler-diagnostic-01/visual-review.json`.
+- The dedicated-runtime CPU suite passed all **129 tests**, including actual
+  adapter save/reload APIs and read-only Node/term-chan loader integration.
+  These validate implementation contracts, not portrait quality.
+
 - Two-step 512px SDXL LoRA runtime smoke passed; a 100-step style pilot on six
   training identities/two whole-identity holdouts also completed in about 117
   seconds, with finite updates, unchanged frozen weights and exact CPU reload.
