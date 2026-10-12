@@ -438,6 +438,31 @@ class SmokePreflightTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             smoke.preflight(self.request_path, self.output, refine=True)
 
+    def test_refine_matched_768_resolution_preflight_and_canvas(self):
+        for content in (576, 672, 768):
+            request = self.refine_fixture(True)
+            request["config"].update(resolution=768, content_resolution=content)
+            self.write(request)
+            with patch.object(smoke, "train") as trainer:
+                report = smoke.preflight(self.request_path, self.output, refine=True)
+                trainer.assert_not_called()
+            self.assertEqual(report["request"]["config"]["resolution"], 768)
+            image = Image.new("RGBA", (64, 64), (10, 20, 30, 255))
+            image.putpixel((0, 0), (0, 0, 0, 0))
+            rgb = smoke.prepare_rgb(image, content, 768)
+            pad = (768 - content) // 2
+            self.assertEqual(rgb.size, (768, 768))
+            self.assertEqual(rgb.getpixel((pad, pad)), (255, 255, 255))
+            self.assertEqual(rgb.getpixel((384, 384)), (10, 20, 30))
+            if pad:
+                self.assertEqual(rgb.getpixel((pad - 1, 384)), (255, 255, 255))
+        for resolution, content in ((1024, 768), (768, 512), (512, 672), (True, 768)):
+            request = self.refine_fixture()
+            request["config"].update(resolution=resolution, content_resolution=content)
+            self.write(request)
+            with self.assertRaises(ValueError):
+                smoke.preflight(self.request_path, self.output, refine=True)
+
     def test_refine_continuation_rejects_hash_base_rank_and_incomplete_outcomes(self):
         for mutate in (lambda p: p.update(status="running"), lambda p: p.update(status="failed"),
                        lambda p: p.update(training_started=False),

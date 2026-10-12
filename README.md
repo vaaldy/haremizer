@@ -561,16 +561,24 @@ timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
 and pilot contracts are unchanged. Refinement uses the pilot's train/heldout,
 source/hash, identity-group and anti-recolor gates, with
 `declared_smoke_only: false`. It permits 50–600 total optimizer steps, a uint32
-seed and finite learning rate 1e-5–1e-4; batch 1, effective resolution 512, rank 4
-and gradient clip 1 remain fixed.
+seed and finite learning rate 1e-5–1e-4; batch 1, rank 4 and gradient clip 1
+remain fixed. Effective training `resolution` may be **512 or 768**, never 1024.
 
-Refinement config additionally requires `content_resolution: 384`, `448` or
-`512`. Original 64px RGBA is nearest-scaled to that square, centered on a 512px
-white canvas with explicit alpha compositing, then converted to RGB. Exact
-resize, symmetric padding, background, cached PNG hash and raw RGB hash are
-recorded. Effective SDXL time IDs remain `[512,512,0,0,512,512]`. Only training
-captions/latents are cached; heldout inputs never condition training. Legacy
-512-content preprocessing is unchanged.
+Refinement config additionally requires `content_resolution`: 384/448/512 for a
+512px canvas, or 576/672/768 for a 768px canvas. Original 64px RGBA is nearest-
+scaled to that square, centered on the effective-resolution white canvas with
+explicit alpha compositing, then converted to RGB. Exact resize, symmetric
+padding, background, cached PNG hash and raw RGB hash are recorded. SDXL time
+IDs, input tensors and latents use the actual training resolution consistently.
+Only training captions/latents are cached; heldout inputs never condition
+training. Legacy smoke/pilot and 512-content preprocessing are unchanged.
+
+768px backward memory/stability must be exercised in one bounded 50-step stage
+before scaling; 512px success does not establish its fit. The same 11 GiB
+allocator stop threshold and coordinator deadlines apply. A trainer upgrade
+changes the frozen module binding: archive the old run and initialize a new
+bounded coordinator with the **original work-window deadline**, never silently
+reset the 12-hour budget.
 
 Refinement requests also require `continuation`, either `null` for the unchanged
 fresh-base LoRA initializer or exactly:

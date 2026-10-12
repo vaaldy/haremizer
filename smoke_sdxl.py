@@ -89,7 +89,7 @@ def preflight(request_path, output, *, pilot=False, refine=False):
         raise ValueError("record the existing broad user authorization; do not invent human approval")
     config = request["config"]
     keys(config, {*CONFIG, "steps", *({"content_resolution"} if refine else set())}, "config")
-    fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate")}
+    fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate", "resolution")}
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
            config[k] != v for k, v in fixed.items()):
         raise ValueError("smoke config must use the fixed batch/resolution/rank/seed/lr/clip")
@@ -98,9 +98,10 @@ def preflight(request_path, output, *, pilot=False, refine=False):
                 type(config["learning_rate"]) not in (int, float) or
                 not math.isfinite(config["learning_rate"]) or
                 not 1e-5 <= config["learning_rate"] <= 1e-4 or
+                type(config["resolution"]) is not int or config["resolution"] not in (512, 768) or
                 type(config["content_resolution"]) is not int or
-                config["content_resolution"] not in (384, 448, 512)):
-            raise ValueError("refine requires uint32 seed, finite learning_rate 1e-5..1e-4 and content_resolution 384/448/512")
+                config["content_resolution"] not in {512: (384, 448, 512), 768: (576, 672, 768)}.get(config["resolution"], ())):
+            raise ValueError("refine requires uint32 seed, finite learning_rate 1e-5..1e-4; resolution512/content384,448,512 or resolution768/content576,672,768")
     if type(config["steps"]) is not int or not (
             50 <= config["steps"] <= 600 if refine else
             config["steps"] == 100 if pilot else 1 <= config["steps"] <= 2):
@@ -303,11 +304,11 @@ def validate_adapter_file(path):
         raise ValueError("incomplete rank4 adapter")
 
 
-def prepare_rgb(image, content_resolution=512):
+def prepare_rgb(image, content_resolution=512, resolution=512):
     from PIL import Image
     rgba = image.convert("RGBA").resize((content_resolution, content_resolution), Image.Resampling.NEAREST)
-    padding = (512 - content_resolution) // 2
-    canvas = Image.new("RGBA", (512, 512), "white")
+    padding = (resolution - content_resolution) // 2
+    canvas = Image.new("RGBA", (resolution, resolution), "white")
     canvas.alpha_composite(rgba, (padding, padding))
     return canvas.convert("RGB")
 
@@ -364,6 +365,8 @@ def train(report, output, persist):
     if not torch.cuda.is_available():
         raise RuntimeError("GPU required; no CPU training fallback")
     config = report["request"]["config"]
+    resolution = config["resolution"]
+    time_ids = [resolution, resolution, 0, 0, resolution, resolution]
     torch.manual_seed(config["seed"])
     torch.cuda.manual_seed_all(config["seed"])
     torch.cuda.reset_peak_memory_stats()
@@ -429,7 +432,7 @@ def train(report, output, persist):
         vae.eval().requires_grad_(False)
         report["conditioning"] = {"tokens": "dual penultimate hidden states concatenated",
                                   "pooled": "CLIPTextModelWithProjection.text_embeds",
-                                  "time_ids": [512, 512, 0, 0, 512, 512],
+                                  "time_ids": time_ids,
                                   "latent_encoding": "fp32 VAE posterior mode * scaling_factor",
                                   "scaling_factor": vae.config.scaling_factor}
         for index, (item, row) in enumerate(zip(cache, report["inputs"])):
@@ -441,7 +444,7 @@ def train(report, output, persist):
             if file_hash(original) != row["sha256"]:
                 raise ValueError("source changed while caching")
             with Image.open(original) as image:
-                rgb = prepare_rgb(image, config.get("content_resolution", 512))
+                rgb = prepare_rgb(image, config.get("content_resolution", resolution), resolution)
             cached = output / f"input-{index + 1}.png"
             rgb.save(cached)
             row["cached_input"] = {"path": cached.name, "sha256": file_hash(cached),
@@ -449,18 +452,18 @@ def train(report, output, persist):
                                    "original_preserved": original.name, "original_sha256": file_hash(original)}
             if "content_resolution" in config:
                 content = config["content_resolution"]
-                pad = (512 - content) // 2
-                row["cached_input"].update(transform=f"64->{content} nearest; centered 512 white alpha flatten",
+                pad = (resolution - content) // 2
+                row["cached_input"].update(transform=f"64->{content} nearest; centered {resolution} white alpha flatten",
                     resize={"from": [64, 64], "to": [content, content], "filter": "NEAREST"},
                     padding={"left": pad, "top": pad, "right": pad, "bottom": pad},
                     background=[255, 255, 255], rgb_sha256=hashlib.sha256(rgb.tobytes()).hexdigest())
-            pixels = torch.tensor(list(rgb.getdata()), dtype=torch.float32).reshape(512, 512, 3)
+            pixels = torch.tensor(list(rgb.getdata()), dtype=torch.float32).reshape(resolution, resolution, 3)
             pixels = (pixels.permute(2, 0, 1).unsqueeze(0).to("cuda") / 127.5) - 1
             latent = vae.encode(pixels).latent_dist.mode() * vae.config.scaling_factor
             finite(latent, item["pooled"], *item["tokens"])
             item["latents"] = latent.cpu().to(torch.float16)
             item["tokens"] = torch.cat(item["tokens"], dim=-1)
-            item["time_ids"] = torch.tensor([[512, 512, 0, 0, 512, 512]], dtype=torch.float16)
+            item["time_ids"] = torch.tensor([time_ids], dtype=torch.float16)
         del pixels, latent, vae
     gc.collect()
     torch.cuda.empty_cache()
