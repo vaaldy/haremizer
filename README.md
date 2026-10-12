@@ -40,6 +40,13 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **27** completed the aligned-caption LR bracket at5e-5. All eight
+  large/native64 outputs were reviewed: the worst iris regression was avoided,
+  but reliable near-black noses/mouths, full-head framing and clean backgrounds
+  remain unmet. The declared **15-experiment cap is exhausted**, with no promoted
+  model and no automatic cap/epoch extension. Caption-conditioning interaction
+  is evidenced; adequacy of the narrow four-identity corpus remains unresolved.
+
 - Global **26** reduced LR to2e-5 under aligned captions: major eye distortions
   reduced but boldness largely faded. No promotion. Global **27** brackets the
   dose at5e-5 for the same 100 updates/parent/pixels/captions/seed/objectives.
