@@ -40,6 +40,14 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **16** completed the matched 25% caption-dropout branch. All eight
+  actual/native64 images remained substantially similar; no reliable feature
+  gain, so promotion is rejected. The serial-executor workflow is retired at
+  the user's request; parent-direct execution continues without handoff waits.
+  Global **17** is queued from the stronger retained 400-update style checkpoint
+  with 100 updates of the tested facial objective. This changes initialization,
+  not the total-history counter or acceptance gates.
+
 - Autonomous global **15** reached 150 cumulative decoded-feature updates.
   Cross-device loss, active coverage on all sources, frozen weights and reload
   passed, but all-eight/native64 review found no reliable design gain. This

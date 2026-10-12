@@ -50,7 +50,7 @@ One writer and one GPU job at a time. Parent owns decisions, source fixes, visua
 
 ## Authority and bounds
 
-User explicitly renewed autonomous iterative improvement and checkpoint commits. Sol-only delegates: `openai-codex/gpt-6.1-sol:medium`; no paid services or provider substitution. Direct parent execution remains valid.
+User explicitly renewed autonomous iterative improvement and checkpoint commits. The serial-executor subagent was retired at the user's request; the active loop now runs directly in the parent, with no subagent execution handoff barrier. Do not launch another executor unless the user requests it. Any later explicitly authorized delegate remains Sol-only (`openai-codex/gpt-6.1-sol:medium`); no paid services or provider substitution.
 
 Work only in `/home/valdy/Projects/term-chan/haremizer`. Never mutate parent term-chan or the independently tracked `prompts/` repository. Use verified CC0/CC-BY original artwork with attribution and disclosed derivative edits. No generated-image training feedback, modular recolor datasets, invented human/legal/canonical-age/gender/source-method approval, or unsupported identity counts.
 
