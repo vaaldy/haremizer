@@ -40,6 +40,13 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **24** removed quality tokens identically in both evaluation arms.
+  Learned coarse styling became much stronger but fidelity/proportions failed;
+  baseline artifacts also changed. The next recorded batch aligns training
+  captions with unchanged evaluation conditioning. Added quality tokens are
+  operational model-conditioning cues, not human ratings or factual quality
+  certifications. Pixels, identity partitions and original deadline remain fixed.
+
 - Global **23** synthesized four exact source captions from noise. The adapter
   strongly changed/coarsened source-context style, but exaggerated features and
   source/semantic fidelity failed. Generated diagnostics remain excluded from
