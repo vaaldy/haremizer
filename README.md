@@ -40,6 +40,13 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Autonomous global **15** reached 150 cumulative decoded-feature updates.
+  Cross-device loss, active coverage on all sources, frozen weights and reload
+  passed, but all-eight/native64 review found no reliable design gain. This
+  branch is closed rather than extended again. Batch one used **3/6** slots.
+  The next controlled hypothesis is training-caption dropout for generalization;
+  no new GPU stage is permitted before its CPU tests and frozen plan.
+
 - Autonomous global **14** completed the 50-step decoded-feature safety stage:
   CPU→GPU backward worked, frozen VAE/base and exact reload passed, and all four
   sources received active auxiliary steps (11 total). All eight actual/native64
