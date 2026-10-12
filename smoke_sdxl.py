@@ -93,7 +93,8 @@ def preflight(request_path, output, *, pilot=False, refine=False):
                   *({"prior_preservation_weight"} if refine and "prior_preservation_weight" in config else set()),
                   *({"facial_loss_weight"} if refine and "facial_loss_weight" in config else set()),
                   *({"decoded_feature_loss_weight"} if refine and "decoded_feature_loss_weight" in config else set()),
-                  *({"caption_dropout_probability"} if refine and "caption_dropout_probability" in config else set())}, "config")
+                  *({"caption_dropout_probability"} if refine and "caption_dropout_probability" in config else set()),
+                  *({"snr_gamma"} if refine and "snr_gamma" in config else set())}, "config")
     fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate", "resolution")}
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
            config[k] != v for k, v in fixed.items()):
@@ -111,6 +112,10 @@ def preflight(request_path, output, *, pilot=False, refine=False):
         weight = config["prior_preservation_weight"]
         if type(weight) not in (int, float) or not 0 <= weight <= 1 or not math.isfinite(weight):
             raise ValueError("prior_preservation_weight must be finite 0..1")
+    snr_gamma = config.get("snr_gamma")
+    if snr_gamma is not None and (type(snr_gamma) not in (int, float) or
+            not 0 < snr_gamma <= 20 or not math.isfinite(snr_gamma)):
+        raise ValueError("snr_gamma must be None or finite numeric >0..20")
     dropout_probability = config.get("caption_dropout_probability", 0)
     if (type(dropout_probability) not in (int, float) or not 0 <= dropout_probability <= 0.5 or
             not math.isfinite(dropout_probability)):
@@ -386,6 +391,21 @@ def denoising_loss(predicted, target, weights=None):
     return (squared * weights).sum() / weights.expand_as(squared).sum()
 
 
+def min_snr_weight(alpha_cumprod, gamma, prediction_type):
+    """Scalar Min-SNR weight for the existing batch-one epsilon/velocity objective."""
+    import torch
+    alpha = alpha_cumprod.float()
+    if alpha.numel() != 1 or not torch.isfinite(alpha).all() or not 0 < alpha.item() < 1:
+        raise ValueError("Min-SNR requires one finite alpha strictly between zero and one")
+    snr = alpha / (1 - alpha)
+    capped = torch.minimum(snr, snr.new_tensor(gamma))
+    if prediction_type == "epsilon":
+        return capped / snr, snr
+    if prediction_type == "v_prediction":
+        return capped / (snr + 1), snr
+    raise ValueError("only epsilon/v_prediction scheduler targets supported")
+
+
 def select_caption_conditioning(full, empty, rng, probability):
     """Independent stdlib RNG only; zero never draws or needs an empty cache."""
     dropped = probability > 0 and rng.random() < probability
@@ -557,6 +577,11 @@ def train(report, output, persist):
         raise RuntimeError("GPU required; no CPU training fallback")
     config = report["request"]["config"]
     resolution = config["resolution"]
+    snr_gamma = config.get("snr_gamma")
+    if snr_gamma is not None:
+        report["snr_weighting"] = {"gamma": snr_gamma,
+            "formula": "min(SNR,gamma)/SNR for epsilon; min(SNR,gamma)/(SNR+1) for velocity",
+            "scope": "scalar multiplier on spatially weighted noise loss only; prior/decoded terms unchanged"}
     dropout_probability = config.get("caption_dropout_probability", 0)
     empty_caption = {"tokens": []} if dropout_probability > 0 else None
     caption_rng = random.Random(config["seed"]) if dropout_probability > 0 else None
@@ -793,6 +818,11 @@ def train(report, output, persist):
         with torch.autocast("cuda", dtype=torch.float16):
             predicted = unet(noisy, timestep, **conditioning).sample
             noise_loss = denoising_loss(predicted, target, item.get("facial_weights"))
+            if snr_gamma is not None:
+                unweighted_noise_loss = noise_loss
+                snr_weight, snr = min_snr_weight(
+                    scheduler.alphas_cumprod[timestep.item()].to(predicted.device), snr_gamma, prediction)
+                noise_loss = noise_loss * snr_weight
             prior_loss = (torch.nn.functional.mse_loss(predicted.float(), prior.float())
                           if prior is not None else noise_loss.new_zeros(()))
             loss = noise_loss + prior_weight * prior_loss
@@ -821,6 +851,9 @@ def train(report, output, persist):
         memory()
         report["steps"].append({"optimizer_step": step + 1, "loss": loss.item(),
                                 "noise_loss": noise_loss.item(), "prior_loss": prior_loss.item(),
+                                **({"unweighted_noise_loss": unweighted_noise_loss.item(),
+                                    "snr_weight": snr_weight.item(), "snr": snr.item(),
+                                    "timestep": timestep.item()} if snr_gamma is not None else {}),
                                 **({"weighted_noise_loss": noise_loss.item(),
                                     "source_sha256": report["inputs"][step % len(cache)]["sha256"]}
                                    if facial_weight > 1 else {}),

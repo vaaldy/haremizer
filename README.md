@@ -40,6 +40,13 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **18** tested shared `upper body` framing on baseline and warm500.
+  Dark-braid head cropping improved, but other crops, facial-design and
+  decoration failures remain; no promotion. Under the renewed direct continuous
+  request, one further three-experiment batch is explicitly recorded (active
+  cap9, historical counters and original UTC deadline unchanged). The next
+  ablation is Min-SNR gamma5 on the noise objective only, not more steps.
+
 - Parent-direct global **17** applied 100 updates of the tested facial objective
   to retained best400 (500 cumulative). Style and some nose marks changed
   visibly, but eye enlargement, head clipping and decoration still block
@@ -787,6 +794,16 @@ Per-step evidence records `caption_dropped`, chosen-caption SHA256 and source
 SHA256. Default/missing0 performs no extra encode/cache/RNG construction or draw
 and retains the legacy training path. This hypothesis is not a quality claim;
 a fresh bounded coordinator and parent actual-image gate are required.
+
+Optional refine-only `snr_gamma` is `null`/omitted by default (legacy noise MSE),
+otherwise finite numeric >0..20. Gamma5 is a controlled Min-SNR ablation, following
+[the official SDXL LoRA trainer](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora_sdxl.py).
+Only the spatially normalized noise loss is multiplied by
+`min(SNR,gamma)/SNR` for epsilon or `min(SNR,gamma)/(SNR+1)` for velocity.
+Source prior and decoded terms are unchanged. Both weighted/unweighted noise
+loss, SNR and scalar weight are recorded. This balances timesteps; it does not
+prove bold features, proportions, alpha or generalization. Unsupported terminal
+alpha values fail rather than silently inventing a numeric correction.
 
 Refinement requests also require `continuation`, either `null` for the unchanged
 fresh-base LoRA initializer or exactly:

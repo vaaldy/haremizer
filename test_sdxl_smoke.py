@@ -1033,6 +1033,41 @@ class SmokePreflightTests(unittest.TestCase):
         altered = {**cache, "gt": cache["gt"] + masked.expand_as(cache["gt"]) * 0.4}
         self.assertTrue(torch.equal(loss, smoke.decoded_feature_loss(vae, latent, altered, 0.13025)))
 
+    def test_snr_config_refine_only_and_bounds_preflight(self):
+        base = self.refine_fixture()
+        for gamma in (None, 0.1, 5, 20):
+            request = copy.deepcopy(base)
+            request["config"]["snr_gamma"] = gamma
+            self.write(request)
+            smoke.preflight(self.request_path, self.output, refine=True)
+        for gamma in (0, -1, 20.1, True, "5", float("nan"), float("inf"), 10**400):
+            request = copy.deepcopy(base)
+            request["config"]["snr_gamma"] = gamma
+            self.write(request)
+            with self.subTest(gamma=gamma), self.assertRaises(ValueError):
+                smoke.preflight(self.request_path, self.output, refine=True)
+        request = copy.deepcopy(self.request)
+        request["config"]["snr_gamma"] = None
+        self.write(request)
+        with self.assertRaises(ValueError):
+            smoke.preflight(self.request_path, self.output)
+
+    @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU helper test")
+    def test_min_snr_scalar_formula_and_gradient_cpu(self):
+        import torch
+        for alpha, epsilon, velocity in ((0.5, 1, 0.5), (0.99, 5/99, 0.05)):
+            for kind, expected in (("epsilon", epsilon), ("v_prediction", velocity)):
+                weight, snr = smoke.min_snr_weight(torch.tensor(alpha), 5, kind)
+                self.assertAlmostEqual(weight.item(), expected, places=5)
+                predicted = torch.tensor(1.0, requires_grad=True)
+                loss = smoke.denoising_loss(predicted, torch.tensor(0.0)) * weight
+                loss.backward()
+                self.assertAlmostEqual(predicted.grad.item(), 2*expected, places=5)
+                self.assertTrue(torch.isfinite(snr))
+        for alpha in (0.0, 1.0, float("nan")):
+            with self.assertRaises(ValueError):
+                smoke.min_snr_weight(torch.tensor(alpha), 5, "epsilon")
+
     @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU API test")
     def test_real_diffusers_save_delete_reload_cpu(self):
         import torch
