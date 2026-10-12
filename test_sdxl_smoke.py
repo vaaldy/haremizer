@@ -751,6 +751,109 @@ class SmokePreflightTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 smoke.main()
 
+    def test_caption_dropout_preml_bounds_and_refine_only(self):
+        import builtins
+        original = builtins.__import__
+        def guard(name, *args, **kwargs):
+            if name.split(".")[0] in {"torch", "diffusers", "transformers", "peft", "accelerate"}:
+                raise AssertionError("preflight imported ML")
+            return original(name, *args, **kwargs)
+        for probability in (0, 0.25, 0.5):
+            request = self.refine_fixture()
+            request["config"]["caption_dropout_probability"] = probability
+            self.write(request)
+            with patch("builtins.__import__", side_effect=guard):
+                smoke.preflight(self.request_path, self.output, refine=True)
+        with patch("builtins.__import__", side_effect=guard), patch.object(smoke, "train") as trainer:
+            for probability in (-0.1, 0.50001, True, float("nan"), float("inf"), "0.25", 10**400):
+                request = self.refine_fixture()
+                request["config"]["caption_dropout_probability"] = probability
+                self.write(request)
+                with self.assertRaisesRegex(ValueError, "caption_dropout_probability"):
+                    smoke.run(self.request_path, self.output, refine=True)
+            request = copy.deepcopy(self.request)
+            request["config"]["caption_dropout_probability"] = 0
+            self.write(request)
+            with self.assertRaises(ValueError):
+                smoke.run(self.request_path, self.output)
+            trainer.assert_not_called()
+
+    def test_caption_dropout_zero_and_independent_deterministic_choices(self):
+        import random
+        from unittest.mock import Mock
+        full, empty = {"tokens": "full"}, {"tokens": "empty"}
+        rng = Mock()
+        for _ in range(5):
+            chosen, dropped = smoke.select_caption_conditioning(full, None, rng, 0)
+            self.assertIs(chosen, full)
+            self.assertFalse(dropped)
+        rng.random.assert_not_called()
+        state = random.getstate()
+        expected_rng, actual_rng = random.Random(20261012), random.Random(20261012)
+        choices = [smoke.select_caption_conditioning(full, empty, actual_rng, 0.25)[1] for _ in range(100)]
+        self.assertEqual(choices, [expected_rng.random() < 0.25 for _ in range(100)])
+        self.assertTrue(any(choices) and not all(choices))
+        self.assertEqual(random.getstate(), state)
+
+    def test_caption_shared_empty_dual_encoder_cache_contract(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        ids = Mock()
+        ids.to.return_value = ids
+        tokenizer = Mock(model_max_length=77, return_value=SimpleNamespace(input_ids=ids))
+        hidden1, hidden2, pooled = Mock(), Mock(), Mock()
+        hidden1.cpu.return_value = "first-context"
+        hidden2.cpu.return_value = "second-context"
+        pooled.cpu.return_value = "pooled-context"
+        encoder1 = Mock(return_value=SimpleNamespace(hidden_states=[None, hidden1, None]))
+        encoder2 = Mock(return_value=SimpleNamespace(hidden_states=[None, hidden2, None], text_embeds=pooled))
+        shared = {"tokens": []}
+        smoke.cache_empty_caption(shared, encoder1, tokenizer, projection=False)
+        smoke.cache_empty_caption(shared, encoder2, tokenizer, projection=True)
+        self.assertEqual(shared, {"tokens": ["first-context", "second-context"], "pooled": "pooled-context"})
+        self.assertEqual(tokenizer.call_count, 2)
+        for call in tokenizer.call_args_list:
+            self.assertEqual(call.args, ("",))
+            self.assertEqual(call.kwargs, dict(padding="max_length", truncation=True, max_length=77, return_tensors="pt"))
+        encoder1.assert_called_once_with(ids, output_hidden_states=True)
+        encoder2.assert_called_once_with(ids, output_hidden_states=True)
+
+    def test_caption_zero_has_no_extra_cache_rng_and_prior_matches_student(self):
+        import ast
+        import inspect
+        tree = ast.parse(inspect.getsource(smoke.train))
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {
+                    "cache_empty_caption", "select_caption_conditioning", "caption_conditioning_digest"}:
+                ancestors, current = [], node
+                while current in parents:
+                    current = parents[current]
+                    ancestors.append(current)
+                self.assertTrue(any(isinstance(a, ast.If) and "dropout_probability > 0" in ast.unparse(a.test)
+                                    for a in ancestors))
+        source = inspect.getsource(smoke.train)
+        self.assertIn('empty_caption = {"tokens": []} if dropout_probability > 0 else None', source)
+        self.assertIn('caption_rng = random.Random(config["seed"]) if dropout_probability > 0 else None', source)
+        self.assertIn('prior = base_prediction(unet, noisy, timestep, conditioning)', source)
+        self.assertIn('predicted = unet(noisy, timestep, **conditioning).sample', source)
+        self.assertIn('else:\n            item = {k: v.to("cuda") for k, v in cache[step % len(cache)].items()}', source)
+
+    @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU API test")
+    def test_caption_choices_do_not_change_torch_noise_timestep_rng(self):
+        import random
+        import torch
+        noise_rng = torch.Generator().manual_seed(20261012)
+        reference_rng = torch.Generator().manual_seed(20261012)
+        caption_rng = random.Random(20261012)
+        full, empty = {"tokens": torch.ones(1)}, {"tokens": torch.zeros(1)}
+        for _ in range(20):
+            chosen, dropped = smoke.select_caption_conditioning(full, empty, caption_rng, 0.25)
+            self.assertEqual(chosen["tokens"].item(), 0 if dropped else 1)
+            self.assertTrue(torch.equal(torch.randn(4, generator=noise_rng), torch.randn(4, generator=reference_rng)))
+            self.assertTrue(torch.equal(torch.randint(0, 1000, (1,), generator=noise_rng),
+                                        torch.randint(0, 1000, (1,), generator=reference_rng)))
+
     def test_decoded_feature_config_preimport_and_training_only(self):
         import builtins
         original = builtins.__import__

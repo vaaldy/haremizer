@@ -756,6 +756,23 @@ parameters and crop locality. ML-dependent tests use the existing optional
 cross-device backward remain risks;
 these tests are not a real-GPU memory or visual acceptance gate.
 
+An experimental refine-only `caption_dropout_probability` (finite numeric
+0..0.5, default0; booleans rejected) explores source-conditioning generalization.
+Positive probability caches **one shared empty-caption dual-CLIP conditioning**
+using the same frozen local encoders as full captions, including the projected
+pooled embedding. Full/empty conditioning tensor digests, caption hashes, encoder
+weight hashes, cache bytes, probability and independent RNG seed are recorded.
+Per optimizer step, an independent `random.Random(config_seed)` chooses full or
+empty caption; it never advances Torch noise/timestep or global random generators.
+Only the chosen token/pooled tensors transfer to GPU. Student and detached
+source-only prior receive exactly the same chosen conditioning. Licensed source
+latents, prepared RGB GT and masks are unchanged; no text-encoder training,
+source-caption edits, generated-image feedback or inference-prompt changes occur.
+Per-step evidence records `caption_dropped`, chosen-caption SHA256 and source
+SHA256. Default/missing0 performs no extra encode/cache/RNG construction or draw
+and retains the legacy training path. This hypothesis is not a quality claim;
+a fresh bounded coordinator and parent actual-image gate are required.
+
 Refinement requests also require `continuation`, either `null` for the unchanged
 fresh-base LoRA initializer or exactly:
 

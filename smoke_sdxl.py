@@ -11,6 +11,7 @@ import os
 import struct
 from pathlib import Path
 import re
+import random
 import sys
 import time
 from urllib.parse import urlparse
@@ -91,7 +92,8 @@ def preflight(request_path, output, *, pilot=False, refine=False):
     keys(config, {*CONFIG, "steps", *({"content_resolution"} if refine else set()),
                   *({"prior_preservation_weight"} if refine and "prior_preservation_weight" in config else set()),
                   *({"facial_loss_weight"} if refine and "facial_loss_weight" in config else set()),
-                  *({"decoded_feature_loss_weight"} if refine and "decoded_feature_loss_weight" in config else set())}, "config")
+                  *({"decoded_feature_loss_weight"} if refine and "decoded_feature_loss_weight" in config else set()),
+                  *({"caption_dropout_probability"} if refine and "caption_dropout_probability" in config else set())}, "config")
     fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate", "resolution")}
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
            config[k] != v for k, v in fixed.items()):
@@ -109,6 +111,10 @@ def preflight(request_path, output, *, pilot=False, refine=False):
         weight = config["prior_preservation_weight"]
         if type(weight) not in (int, float) or not 0 <= weight <= 1 or not math.isfinite(weight):
             raise ValueError("prior_preservation_weight must be finite 0..1")
+    dropout_probability = config.get("caption_dropout_probability", 0)
+    if (type(dropout_probability) not in (int, float) or not 0 <= dropout_probability <= 0.5 or
+            not math.isfinite(dropout_probability)):
+        raise ValueError("caption_dropout_probability must be finite 0..0.5")
     decoded_weight = config.get("decoded_feature_loss_weight", 0)
     if (type(decoded_weight) not in (int, float) or not 0 <= decoded_weight <= 0.25 or
             not math.isfinite(decoded_weight)):
@@ -380,6 +386,32 @@ def denoising_loss(predicted, target, weights=None):
     return (squared * weights).sum() / weights.expand_as(squared).sum()
 
 
+def select_caption_conditioning(full, empty, rng, probability):
+    """Independent stdlib RNG only; zero never draws or needs an empty cache."""
+    dropped = probability > 0 and rng.random() < probability
+    return (empty if dropped else full), dropped
+
+
+def cache_empty_caption(item, encoder, tokenizer, *, projection):
+    """One shared empty prompt using the same frozen dual-CLIP encoding contract."""
+    ids = tokenizer("", padding="max_length", truncation=True,
+                    max_length=tokenizer.model_max_length, return_tensors="pt").input_ids
+    encoded = encoder(ids.to("cuda"), output_hidden_states=True)
+    item["tokens"].append(encoded.hidden_states[-2].cpu())
+    if projection:
+        item["pooled"] = encoded.text_embeds.cpu()
+
+
+def caption_conditioning_digest(item):
+    value = hashlib.sha256()
+    for name in ("tokens", "pooled"):
+        tensor = item[name]
+        value.update(name.encode())
+        value.update(str((tuple(tensor.shape), tensor.dtype)).encode())
+        value.update(tensor.contiguous().numpy().tobytes())
+    return value.hexdigest()
+
+
 def predicted_x0(noisy, predicted, alpha_cumprod, prediction_type):
     """Unclipped clean latent estimate; preserve the prediction gradient."""
     import torch
@@ -525,6 +557,17 @@ def train(report, output, persist):
         raise RuntimeError("GPU required; no CPU training fallback")
     config = report["request"]["config"]
     resolution = config["resolution"]
+    dropout_probability = config.get("caption_dropout_probability", 0)
+    empty_caption = {"tokens": []} if dropout_probability > 0 else None
+    caption_rng = random.Random(config["seed"]) if dropout_probability > 0 else None
+    if dropout_probability > 0:
+        report["caption_dropout"] = {
+            "probability": dropout_probability, "rng_seed": config["seed"],
+            "rng": "independent stdlib random.Random; no Torch/global RNG draws",
+            "empty_caption_sha256": hashlib.sha256(b"").hexdigest(),
+            "text_encoder_weights": {name: report["model"]["file_sha256"][name + "/model.safetensors"]
+                                     for name in ("text_encoder", "text_encoder_2")},
+            "scope": "one shared frozen dual-CLIP empty conditioning; same chosen conditioning for student and prior; source RGB/masks unchanged"}
     decoded_weight = config.get("decoded_feature_loss_weight", 0)
     auxiliary_cache = []
     if decoded_weight > 0:
@@ -597,10 +640,17 @@ def train(report, output, persist):
                 if sub == "text_encoder_2":
                     finite(encoded.text_embeds)
                     item["pooled"] = encoded.text_embeds.cpu()
+            if dropout_probability > 0:
+                cache_empty_caption(empty_caption, encoder, tokenizer, projection=sub == "text_encoder_2")
+                finite(*empty_caption["tokens"], *([empty_caption["pooled"]] if sub == "text_encoder_2" else []))
             del encoded, ids, encoder, tokenizer
             gc.collect()
             torch.cuda.empty_cache()
             memory()
+        if dropout_probability > 0:
+            empty_caption["tokens"] = torch.cat(empty_caption["tokens"], dim=-1)
+            report["caption_dropout"].update(empty_conditioning_sha256=caption_conditioning_digest(empty_caption),
+                empty_cache_bytes=sum(t.numel() * t.element_size() for t in empty_caption.values()))
         vae = AutoencoderKL.from_pretrained(str(model / "vae"), torch_dtype=torch.float32, **load).to("cuda")
         vae.eval().requires_grad_(False)
         report["conditioning"] = {"tokens": "dual penultimate hidden states concatenated",
@@ -654,6 +704,10 @@ def train(report, output, persist):
                                                   "prepared_rgb_sha256": hashlib.sha256(rgb.tobytes()).hexdigest()}
                 auxiliary_cache.append(auxiliary)
             item["tokens"] = torch.cat(item["tokens"], dim=-1)
+            if dropout_probability > 0:
+                row["cached_caption_conditioning"] = {
+                    "caption_sha256": hashlib.sha256(row["caption"].encode()).hexdigest(),
+                    "conditioning_sha256": caption_conditioning_digest(item)}
             item["time_ids"] = torch.tensor([time_ids], dtype=torch.float16)
         del pixels, latent
         if decoded_weight > 0:
@@ -716,7 +770,14 @@ def train(report, output, persist):
     persist()
     for step in range(report["request"]["config"]["steps"]):
         started = time.monotonic()
-        item = {k: v.to("cuda") for k, v in cache[step % len(cache)].items()}
+        if dropout_probability > 0:
+            chosen, caption_dropped = select_caption_conditioning(cache[step % len(cache)], empty_caption,
+                                                                 caption_rng, dropout_probability)
+            item = {k: v.to("cuda") for k, v in cache[step % len(cache)].items()
+                    if k not in ("tokens", "pooled")}
+            item.update({k: chosen[k].to("cuda") for k in ("tokens", "pooled")})
+        else:
+            item = {k: v.to("cuda") for k, v in cache[step % len(cache)].items()}
         noise = torch.randn(item["latents"].shape, generator=generator, device="cuda", dtype=torch.float16)
         timestep = torch.randint(0, scheduler.config.num_train_timesteps, (1,), generator=generator, device="cuda")
         noisy = scheduler.add_noise(item["latents"], noise, timestep)
@@ -763,6 +824,11 @@ def train(report, output, persist):
                                 **({"weighted_noise_loss": noise_loss.item(),
                                     "source_sha256": report["inputs"][step % len(cache)]["sha256"]}
                                    if facial_weight > 1 else {}),
+                                **({"caption_dropped": caption_dropped,
+                                    "chosen_caption_sha256": hashlib.sha256(
+                                        ("" if caption_dropped else report["inputs"][step % len(cache)]["caption"]).encode()).hexdigest(),
+                                    "caption_source_sha256": report["inputs"][step % len(cache)]["sha256"]}
+                                   if dropout_probability > 0 else {}),
                                 **({"decoded_feature_active": decoded_loss is not None,
                                     "timestep": timestep.item(),
                                     "decoded_loss": decoded_loss.item() if decoded_loss is not None else 0.0,
