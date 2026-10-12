@@ -40,6 +40,12 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **22** froze Q/K adapter weights and optimized value/output parameters;
+  numeric/frozen/reload checks passed, but native64 features remain inconsistent.
+  The next diagnostic synthesizes exact training captions from noise, paired
+  with the unloaded base. It is not blind validation, image prompting, or
+  permission to recycle generated images into training.
+
 - Global **21** completed GT ink-weight4 supervision without numeric failures.
   All-eight/native64 review found insufficient practical gain; no promotion.
   Nine GPU checks are archived. The next investigation preserves query/key
