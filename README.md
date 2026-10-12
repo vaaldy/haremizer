@@ -40,6 +40,12 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **26** reduced LR to2e-5 under aligned captions: major eye distortions
+  reduced but boldness largely faded. No promotion. Global **27** brackets the
+  dose at5e-5 for the same 100 updates/parent/pixels/captions/seed/objectives.
+  This is the last slot of the current declared conditioning batch, not an
+  automatic epoch extension or relaxed visual gate.
+
 - Global **25** aligned training/evaluation quality conditioning and produced
   much stronger style changes, confirming a conditioning interaction. Oversized
   eyes/coarse distortions and adherence failures still reject promotion.
