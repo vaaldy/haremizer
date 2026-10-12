@@ -94,7 +94,8 @@ def preflight(request_path, output, *, pilot=False, refine=False):
                   *({"facial_loss_weight"} if refine and "facial_loss_weight" in config else set()),
                   *({"decoded_feature_loss_weight"} if refine and "decoded_feature_loss_weight" in config else set()),
                   *({"caption_dropout_probability"} if refine and "caption_dropout_probability" in config else set()),
-                  *({"snr_gamma"} if refine and "snr_gamma" in config else set())}, "config")
+                  *({"snr_gamma"} if refine and "snr_gamma" in config else set()),
+                  *({"decoded_ink_weight"} if refine and "decoded_ink_weight" in config else set())}, "config")
     fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate", "resolution")}
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
            config[k] != v for k, v in fixed.items()):
@@ -124,6 +125,10 @@ def preflight(request_path, output, *, pilot=False, refine=False):
     if (type(decoded_weight) not in (int, float) or not 0 <= decoded_weight <= 0.25 or
             not math.isfinite(decoded_weight)):
         raise ValueError("decoded_feature_loss_weight must be finite 0..0.25")
+    ink_weight = config.get("decoded_ink_weight", 1)
+    if (type(ink_weight) not in (int, float) or not 1 <= ink_weight <= 8 or
+            not math.isfinite(ink_weight) or (ink_weight > 1 and decoded_weight == 0)):
+        raise ValueError("decoded_ink_weight must be finite 1..8; >1 requires decoded feature loss")
     facial_weight = config.get("facial_loss_weight", 1)
     if (type(facial_weight) not in (int, float) or not 1 <= facial_weight <= 4 or
             not math.isfinite(facial_weight)):
@@ -466,7 +471,7 @@ def decoded_crop_box(regions, content_resolution, resolution, latent_size):
     return box, mask
 
 
-def decoded_feature_cache(rgb, regions, content_resolution, resolution, latent_size):
+def decoded_feature_cache(rgb, regions, content_resolution, resolution, latent_size, ink_weight=1):
     """CPU-only real prepared source RGB and union mask, never VAE-generated GT."""
     import torch
     import torch.nn.functional as F
@@ -481,6 +486,9 @@ def decoded_feature_cache(rgb, regions, content_resolution, resolution, latent_s
     display_size = (crop.height // display_stride, crop.width // display_stride)
     gt64 = F.interpolate(gt, size=display_size, mode="area")
     mask64 = F.interpolate(binary, size=display_size, mode="area")
+    if ink_weight > 1:
+        ink = (gt64.amax(dim=1, keepdim=True) <= 32 / 255).float()
+        mask64 = mask64 * (1 + (ink_weight - 1) * ink)
     if mask64.sum().item() <= 0:
         raise ValueError("decoded feature mask is empty")
     provenance = {"latent_box_xyxy": list(box), "rgb_box_xyxy": list(rgb_box),
@@ -492,7 +500,9 @@ def decoded_feature_cache(rgb, regions, content_resolution, resolution, latent_s
                   "mask_sha256": hashlib.sha256(union.tobytes()).hexdigest(),
                   "latent_mask_sha256": hashlib.sha256(mask.tobytes()).hexdigest(),
                   "mapping": "prepare_rgb source crop; source union NEAREST with centered padding; bbox+2 latent cells aligned outward to LCM(VAE8,global64 stride); both AREA to exact crop_px/display_stride",
-                  "cache_bytes": (gt64.numel() + mask64.numel()) * 4}
+                  "cache_bytes": (gt64.numel() + mask64.numel()) * 4,
+                  "ink_weight": ink_weight, "ink_threshold_max_rgb": 32,
+                  "weighted_mask_sha256": hashlib.sha256(mask64.contiguous().numpy().tobytes()).hexdigest()}
     return {"box": box, "gt": gt64, "mask": mask64, "provenance": provenance}
 
 
@@ -599,7 +609,9 @@ def train(report, output, persist):
         torch.set_num_threads(2)
         report["decoded_feature_loss"] = {
             "weight": decoded_weight, "active_timestep_max": 250, "cpu_threads": torch.get_num_threads(),
-            "formula": "loss=noise_loss+prior_weight*prior_loss+decoded_weight*sum(abs(AREA((VAE.decode(crop(x0)/scale)+1)/2)-AREA(real_prepare_rgb_crop))*AREA(source_union_mask))/sum(AREA(source_union_mask).expand_as(RGB))",
+            "ink_weight": config.get("decoded_ink_weight", 1),
+            "mask_weighting": "source union * (1+(ink_weight-1)*[actual GT64 max RGB<=32/255]); normalized over expanded RGB weights",
+            "formula": "loss=noise_loss+prior_weight*prior_loss+decoded_weight*sum(abs(decoded64-real_source64)*decoded_weights)/sum(decoded_weights.expand_as(RGB)); decoded_weights=AREA(source_union_mask)*(1+(ink_weight-1)*GT_dark_mask)",
             "x0": "epsilon:(xt-sqrt(1-alpha)*eps)/sqrt(alpha); v:sqrt(alpha)*xt-sqrt(1-alpha)*v; no detach/clamp",
             "scope": "training source-only cropped CPU fp32 frozen local VAE; no heldout/generated GT; no full-image gradient decode"}
     facial_weight = config.get("facial_loss_weight", 1)
@@ -724,7 +736,8 @@ def train(report, output, persist):
                     "weight": facial_weight, "cpu_cache_bytes": item["facial_weights"].numel() * 4}
             if decoded_weight > 0:
                 auxiliary = decoded_feature_cache(rgb, row["facial_regions"], config["content_resolution"],
-                                                  resolution, (latent.shape[-1], latent.shape[-2]))
+                                                  resolution, (latent.shape[-1], latent.shape[-2]),
+                                                  config.get("decoded_ink_weight", 1))
                 row["cached_decoded_features"] = {**auxiliary["provenance"], "source_sha256": row["sha256"],
                                                   "prepared_rgb_sha256": hashlib.sha256(rgb.tobytes()).hexdigest()}
                 auxiliary_cache.append(auxiliary)

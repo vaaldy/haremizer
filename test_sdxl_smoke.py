@@ -1033,6 +1033,43 @@ class SmokePreflightTests(unittest.TestCase):
         altered = {**cache, "gt": cache["gt"] + masked.expand_as(cache["gt"]) * 0.4}
         self.assertTrue(torch.equal(loss, smoke.decoded_feature_loss(vae, latent, altered, 0.13025)))
 
+    def test_decoded_ink_config_bounds_and_dependency(self):
+        request = self.refine_fixture()
+        request["config"]["decoded_feature_loss_weight"] = 0.1
+        for row in request["examples"]:
+            row["facial_regions"] = [{"x": 20, "y": 24, "width": 10, "height": 12}]
+        for value in (1, 4, 8):
+            request["config"]["decoded_ink_weight"] = value
+            self.write(request)
+            smoke.preflight(self.request_path, self.output, refine=True)
+        for value in (0, 8.1, True, "4", float("nan"), float("inf"), 10**400):
+            request["config"]["decoded_ink_weight"] = value
+            self.write(request)
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                smoke.preflight(self.request_path, self.output, refine=True)
+        request["config"].update(decoded_ink_weight=4, decoded_feature_loss_weight=0)
+        self.write(request)
+        with self.assertRaises(ValueError):
+            smoke.preflight(self.request_path, self.output, refine=True)
+
+    @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU helper test")
+    def test_decoded_ink_weights_only_actual_dark_gt_and_union(self):
+        import torch
+        from PIL import ImageDraw
+        source = Image.new("RGBA", (64, 64), (200, 150, 100, 255))
+        ImageDraw.Draw(source).rectangle((24, 26, 25, 27), fill=(16, 16, 16, 255))
+        ImageDraw.Draw(source).rectangle((40, 40, 41, 41), fill=(16, 16, 16, 255))
+        rgb = smoke.prepare_rgb(source, 768, 768)
+        regions = [{"x": 20, "y": 24, "width": 10, "height": 12}]
+        plain = smoke.decoded_feature_cache(rgb, regions, 768, 768, (96, 96))
+        ink = smoke.decoded_feature_cache(rgb, regions, 768, 768, (96, 96), 4)
+        dark = plain["gt"].amax(dim=1, keepdim=True) <= 32/255
+        expected = plain["mask"] * (1 + 3*dark.float())
+        self.assertTrue(torch.equal(ink["gt"], plain["gt"]))
+        self.assertTrue(torch.equal(ink["mask"], expected))
+        self.assertEqual(int((ink["mask"] == 4).sum()), 4)
+        self.assertEqual(ink["provenance"]["ink_weight"], 4)
+
     def test_snr_config_refine_only_and_bounds_preflight(self):
         base = self.refine_fixture()
         for gamma in (None, 0.1, 5, 20):

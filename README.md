@@ -40,6 +40,11 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **20** produced larger adaptation changes at LR1e-4, including mouth
+  shape/color shifts and an unrequested accessory; it is not promoted. The final
+  slot of this declared batch targets actual licensed GT near-black facial ink
+  inside the existing decoded loss, rather than amplifying the whole update.
+
 - Direct global **19** completed Min-SNR gamma5 with numerical checks intact;
   all-eight/native64 inspection found little meaningful feature improvement.
   It is not promoted. Global **20** is a one-variable learning-rate strength
@@ -770,7 +775,14 @@ RGB `[0,1]` are AREA resized to exact `crop_height/display_stride` by
 grid: no fractional resize or phase shift is introduced. The same source-rectangle union is resized with
 AREA to form fractional coverage weights. The auxiliary loss is
 `sum(abs(decoded64-source64)*mask64) / sum(mask64 expanded over RGB channels)`.
-No additional dark-ink weighting is used. The differentiable CPU scalar moves
+Default `decoded_ink_weight=1` adds no dark-ink weighting. An optional refine-only
+finite weight1..8 (>1 requires positive decoded-feature loss) multiplies the
+existing source-union weights only where **actual GT64 max RGB≤32/255**.
+The RGB-expanded denominator uses those same weights; GT colors, alpha, geometry
+and output pixels are not edited by the trainer. Cache evidence records the
+threshold, coefficient and weighted-mask hash. This source-only ink emphasis is
+not an automatic landmark detector or a learned-design success claim.
+The differentiable CPU scalar moves
 back to the prediction device and adds `decoded_feature_loss_weight*decoded_loss`
 to the unchanged noise/prior objective. Inactive steps add no auxiliary term.
 
