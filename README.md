@@ -40,6 +40,13 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Parent-direct global **17** applied 100 updates of the tested facial objective
+  to retained best400 (500 cumulative). Style and some nose marks changed
+  visibly, but eye enlargement, head clipping and decoration still block
+  promotion. The final declared slot tests one shared native framing translation
+  (`bust portrait`→`upper body`) on baseline and candidate; no per-case rescue or
+  additional fitting. Serial-executor handoff is no longer in the active loop.
+
 - Global **16** completed the matched 25% caption-dropout branch. All eight
   actual/native64 images remained substantially similar; no reliable feature
   gain, so promotion is rejected. The serial-executor workflow is retired at
