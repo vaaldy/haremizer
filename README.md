@@ -55,6 +55,13 @@ Training completion and PNG format checks are not quality acceptance.
   learned styling/skin/hair gains, but persistent crops and adherence failures.
   This is evaluation evidence, not another weight-training success or promotion.
   Hash-bound review: `runs/refinement-overnight-20261012/scheduler-diagnostic-01/visual-review.json`.
+- One **learned 400-update checkpoint** prototype now has transparent 64px
+  neutral/blink PNGs and `artifacts/trained-best400-curly-01/character/neutral.json`.
+  Independent AI image review passed this example only. Parent verification
+  confirmed exact 4,096-pixel PNG↔JSON frames, 32 colors, and 23 blink edits inside
+  26 declared eye pixels with unchanged alpha/surroundings. Soft eye detail and
+  enclosed pale hair gaps remain; this does not promote the generator or prove
+  automatic blinking. Preview: `artifacts/trained-best400-curly-01/gallery.png`.
 - The dedicated-runtime CPU suite passed all **129 tests**, including actual
   adapter save/reload APIs and read-only Node/term-chan loader integration.
   These validate implementation contracts, not portrait quality.
