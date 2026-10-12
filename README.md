@@ -12,6 +12,10 @@ artwork. No system-driver or global environment changes are authorized.
 
 ## Autonomous work authorization and current evidence
 
+The current end goal, visual gates, checkpoint policy and bounded autonomous
+loop are defined in [GOAL.md](GOAL.md). It supersedes informal “looks good”
+judgments, not the immutable history of earlier experiments.
+
 The user authorized bounded autonomous local training/evaluation, overnight
 RX 6700 XT use with the process-local unsupported compatibility workaround
 `HSA_OVERRIDE_GFX_VERSION=10.3.0`, and verified CC0/CC-BY artwork downloads with
@@ -178,6 +182,11 @@ learned quality as passing. Generated outputs must never be silently fed back
 into training.
 
 ## Supervised durable refinement loop
+
+A frozen coordinator plan may explicitly include
+`settings.scheduler_override: "euler_ancestral"`; this forwards the existing local
+sampler option and requires matching baseline/candidate override and actual
+scheduler-class metadata. Omission preserves the cached scheduler and old plans.
 
 `refinement_loop.py` coordinates **one explicitly chosen stage at a time**, not a
 hyperparameter sweep or an independent LLM service. Sol must actually inspect
