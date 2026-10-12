@@ -580,6 +580,16 @@ changes the frozen module binding: archive the old run and initialize a new
 bounded coordinator with the **original work-window deadline**, never silently
 reset the 12-hour budget.
 
+An optional refine-only `prior_preservation_weight` (finite 0..1, default 0)
+adds `weight * MSE(student_prediction, detached_base_prediction)` to the source
+noise/velocity loss. The base prediction uses the **same licensed training
+latents, noise, timestep and conditioning**, with adapters disabled, gradient-free
+evaluation, and adapter/training state restored even on error. No heldout
+conditioning or new synthetic image data is used. This anchors the base denoiser,
+not a guarantee of preserved geometry or style; both losses are separately
+recorded and actual visual comparison must detect style erasure/regression.
+Predeclare the weight per request; initial experiment is 0.1 for 50 steps.
+
 Refinement requests also require `continuation`, either `null` for the unchanged
 fresh-base LoRA initializer or exactly:
 

@@ -88,7 +88,8 @@ def preflight(request_path, output, *, pilot=False, refine=False):
     if authorization["user_authorized"] is not True or not nonempty(authorization["record"]):
         raise ValueError("record the existing broad user authorization; do not invent human approval")
     config = request["config"]
-    keys(config, {*CONFIG, "steps", *({"content_resolution"} if refine else set())}, "config")
+    keys(config, {*CONFIG, "steps", *({"content_resolution"} if refine else set()),
+                  *({"prior_preservation_weight"} if refine and "prior_preservation_weight" in config else set())}, "config")
     fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate", "resolution")}
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
            config[k] != v for k, v in fixed.items()):
@@ -102,6 +103,10 @@ def preflight(request_path, output, *, pilot=False, refine=False):
                 type(config["content_resolution"]) is not int or
                 config["content_resolution"] not in {512: (384, 448, 512), 768: (576, 672, 768)}.get(config["resolution"], ())):
             raise ValueError("refine requires uint32 seed, finite learning_rate 1e-5..1e-4; resolution512/content384,448,512 or resolution768/content576,672,768")
+    if refine and "prior_preservation_weight" in config:
+        weight = config["prior_preservation_weight"]
+        if type(weight) not in (int, float) or not 0 <= weight <= 1 or not math.isfinite(weight):
+            raise ValueError("prior_preservation_weight must be finite 0..1")
     if type(config["steps"]) is not int or not (
             50 <= config["steps"] <= 600 if refine else
             config["steps"] == 100 if pilot else 1 <= config["steps"] <= 2):
@@ -336,6 +341,20 @@ def load_continuation(unet, path):
     return {k: v.detach().cpu().clone() for k, v in actual.items()}
 
 
+def base_prediction(unet, noisy, timestep, conditioning):
+    """Detached base denoising on existing source inputs, with adapter state restored."""
+    import torch
+    training = unet.training
+    unet.disable_adapters()
+    try:
+        unet.eval()
+        with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16):
+            return unet(noisy, timestep, **conditioning).sample.detach()
+    finally:
+        unet.enable_adapters()
+        unet.train(training)
+
+
 def save_adapter(unet, output):
     from diffusers import StableDiffusionXLPipeline
     from diffusers.utils import convert_state_dict_to_diffusers
@@ -510,6 +529,9 @@ def train(report, output, persist):
     optimizer = torch.optim.AdamW(adapters, lr=config["learning_rate"])
     scaler = torch.amp.GradScaler("cuda")
     generator = torch.Generator(device="cuda").manual_seed(config["seed"])
+    prior_weight = config.get("prior_preservation_weight", 0)
+    report["prior_preservation"] = {"weight": prior_weight,
+        "scope": "detached base epsilon/velocity prediction on licensed training latents only; no heldout or new generated image feedback"}
     report["steps"] = []
     memory()
     report.update(training_started=True, phase="training")
@@ -523,10 +545,18 @@ def train(report, output, persist):
         target = noise if prediction == "epsilon" else scheduler.get_velocity(item["latents"], noise, timestep)
         finite(*item.values(), noise, noisy, target)
         optimizer.zero_grad(set_to_none=True)
+        conditioning = {"encoder_hidden_states": item["tokens"],
+                        "added_cond_kwargs": {"text_embeds": item["pooled"], "time_ids": item["time_ids"]}}
+        prior = base_prediction(unet, noisy, timestep, conditioning) if prior_weight else None
+        if prior is not None:
+            finite(prior)
+            memory()
         with torch.autocast("cuda", dtype=torch.float16):
-            predicted = unet(noisy, timestep, encoder_hidden_states=item["tokens"],
-                             added_cond_kwargs={"text_embeds": item["pooled"], "time_ids": item["time_ids"]}).sample
-            loss = torch.nn.functional.mse_loss(predicted.float(), target.float())
+            predicted = unet(noisy, timestep, **conditioning).sample
+            noise_loss = torch.nn.functional.mse_loss(predicted.float(), target.float())
+            prior_loss = (torch.nn.functional.mse_loss(predicted.float(), prior.float())
+                          if prior is not None else noise_loss.new_zeros(()))
+            loss = noise_loss + prior_weight * prior_loss
         finite(predicted, loss)
         memory()
         scaler.scale(loss).backward()
@@ -542,6 +572,7 @@ def train(report, output, persist):
         finite(*adapters)
         memory()
         report["steps"].append({"optimizer_step": step + 1, "loss": loss.item(),
+                                "noise_loss": noise_loss.item(), "prior_loss": prior_loss.item(),
                                 "gradient_norm_before_clip": norm.item(),
                                 "seconds": time.monotonic() - started})
         persist()
@@ -569,7 +600,7 @@ def train(report, output, persist):
     persist()
     expected = save_adapter(unet, output)
     # Reload on CPU preserves fp32 serialization rather than rounding via the fp16 base.
-    del optimizer, scaler, adapters, final, predicted, loss, item, noisy, target, noise
+    del optimizer, scaler, adapters, final, predicted, loss, noise_loss, prior_loss, prior, conditioning, item, noisy, target, noise
     unet.to("cpu")
     gc.collect()
     torch.cuda.empty_cache()

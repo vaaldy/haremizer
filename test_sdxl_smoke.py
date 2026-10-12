@@ -438,6 +438,67 @@ class SmokePreflightTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             smoke.preflight(self.request_path, self.output, refine=True)
 
+    def test_refine_source_prior_weight_bounds_before_ml(self):
+        for value in (0, 0.1, 1):
+            request = self.refine_fixture()
+            request["config"]["prior_preservation_weight"] = value
+            self.write(request)
+            report = smoke.preflight(self.request_path, self.output, refine=True)
+            self.assertEqual(report["request"]["config"]["prior_preservation_weight"], value)
+        for value in (-1, 1.01, True, float("nan"), float("inf"), 10**400):
+            request = self.refine_fixture()
+            request["config"]["prior_preservation_weight"] = value
+            self.write(request)
+            with patch.object(smoke, "train") as trainer, self.assertRaises(ValueError):
+                smoke.run(self.request_path, self.output, refine=True)
+            trainer.assert_not_called()
+            self.assertFalse(self.output.exists())
+
+    def test_detached_base_prediction_restores_adapter_and_training_state(self):
+        from contextlib import contextmanager, nullcontext
+        from types import SimpleNamespace
+        active = {"no_grad": False}
+
+        @contextmanager
+        def no_grad():
+            active["no_grad"] = True
+            try:
+                yield
+            finally:
+                active["no_grad"] = False
+
+        fake_torch = SimpleNamespace(no_grad=no_grad, autocast=lambda *a, **k: nullcontext(), float16="half")
+        test = self
+
+        class Unet:
+            training = True
+            disabled = False
+            fail = False
+            def disable_adapters(self): self.disabled = True
+            def enable_adapters(self): self.disabled = False
+            def eval(self): self.training = False
+            def train(self, flag): self.training = flag
+            def __call__(self, noisy, timestep, **conditioning):
+                test.assertTrue(self.disabled)
+                test.assertFalse(self.training)
+                test.assertTrue(active["no_grad"])
+                test.assertEqual((noisy, timestep, conditioning), ("source", 7, {"tokens": "train-only"}))
+                if self.fail: raise RuntimeError("teacher fixture failure")
+                return SimpleNamespace(sample=SimpleNamespace(detach=lambda: "detached"))
+
+        unet = Unet()
+        with patch.dict("sys.modules", {"torch": fake_torch}):
+            self.assertEqual(smoke.base_prediction(unet, "source", 7, {"tokens": "train-only"}), "detached")
+            self.assertFalse(unet.disabled)
+            self.assertTrue(unet.training)
+            self.assertFalse(active["no_grad"])
+            unet.fail = True
+            with self.assertRaisesRegex(RuntimeError, "teacher fixture failure"):
+                smoke.base_prediction(unet, "source", 7, {"tokens": "train-only"})
+            self.assertFalse(unet.disabled)
+            self.assertTrue(unet.training)
+            self.assertFalse(active["no_grad"])
+
     def test_refine_matched_768_resolution_preflight_and_canvas(self):
         for content in (576, 672, 768):
             request = self.refine_fixture(True)
