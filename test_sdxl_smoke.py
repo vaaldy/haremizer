@@ -751,6 +751,185 @@ class SmokePreflightTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 smoke.main()
 
+    def test_decoded_feature_config_preimport_and_training_only(self):
+        import builtins
+        original = builtins.__import__
+
+        def guard(name, *args, **kwargs):
+            if name.split(".")[0] in {"torch", "diffusers", "transformers", "peft", "accelerate"}:
+                raise AssertionError("preflight imported ML")
+            return original(name, *args, **kwargs)
+
+        base = self.refine_fixture()
+        for row in base["examples"]:
+            row["facial_regions"] = [{"x": 20, "y": 24, "width": 10, "height": 12}]
+        for value in (0, 0.1, 0.25):
+            request = copy.deepcopy(base)
+            request["config"]["decoded_feature_loss_weight"] = value
+            self.write(request)
+            with patch("builtins.__import__", side_effect=guard):
+                report = smoke.preflight(self.request_path, self.output, refine=True)
+            self.assertTrue(all("facial_regions" not in row for row in report["heldout_inputs"]))
+        bad = []
+        for value in (-0.01, 0.250001, float("nan"), float("inf"), True, "0.1", 10**400):
+            request = copy.deepcopy(base)
+            request["config"]["decoded_feature_loss_weight"] = value
+            bad.append(request)
+        request = copy.deepcopy(base)
+        request["config"]["decoded_feature_loss_weight"] = 0.1
+        request["examples"][0].pop("facial_regions")
+        bad.append(request)
+        request = copy.deepcopy(base)
+        request["config"]["decoded_feature_loss_weight"] = 0.1
+        request["examples"][0]["facial_regions"] = [{"x": 0, "y": 0, "width": 64, "height": 64}]
+        request["config"]["content_resolution"] = request["config"]["resolution"]
+        bad.append(request)
+        request = copy.deepcopy(base)
+        request["heldout_examples"][0]["facial_regions"] = base["examples"][0]["facial_regions"]
+        bad.append(request)
+        request = copy.deepcopy(self.request)
+        request["config"]["decoded_feature_loss_weight"] = 0
+        bad.append(request)  # refine-only, even at zero
+        with patch("builtins.__import__", side_effect=guard), patch.object(smoke, "train") as trainer:
+            for request in bad:
+                self.write(request)
+                with self.assertRaises(ValueError):
+                    smoke.run(self.request_path, self.output, refine="continuation" in request)
+            trainer.assert_not_called()
+        request = self.refine_fixture()
+        request["config"]["decoded_feature_loss_weight"] = 0
+        self.write(request)
+        with patch("builtins.__import__", side_effect=guard):
+            smoke.preflight(self.request_path, self.output, refine=True)  # zero needs no mask
+
+    def test_decoded_default_does_not_retain_or_decode_vae(self):
+        # Pin the opt-in boundary: auxiliary-only calls live beneath strict >0 branches.
+        import ast
+        import inspect
+        tree = ast.parse(inspect.getsource(smoke.train))
+        parents = {}
+        for node in ast.walk(tree):
+            for child in ast.iter_child_nodes(node):
+                parents[child] = node
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {
+                    "decoded_feature_cache", "decoded_feature_loss", "predicted_x0"}:
+                ancestors = []
+                current = node
+                while current in parents:
+                    current = parents[current]
+                    ancestors.append(current)
+                self.assertTrue(any(isinstance(a, ast.If) and "decoded_weight > 0" in ast.unparse(a.test)
+                                    for a in ancestors))
+        source = inspect.getsource(smoke.train)
+        self.assertIn('decoded_weight = config.get("decoded_feature_loss_weight", 0)', source)
+        self.assertIn('else:\n            del vae', source)
+
+    @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU API test")
+    def test_decoded_crop_layout_gt_mask_padding_and_clamp(self):
+        import torch
+        regions = [{"x": 20, "y": 24, "width": 10, "height": 12},
+                   {"x": 23, "y": 30, "width": 10, "height": 12}]
+        source = Image.new("RGB", (64, 64), (25, 80, 130))
+        for content, resolution in ((448, 512), (672, 768), (768, 768)):
+            rgb = smoke.prepare_rgb(source, content, resolution)
+            cache = smoke.decoded_feature_cache(rgb, regions, content, resolution,
+                                                (resolution // 8, resolution // 8))
+            bounds = smoke.facial_mask(regions, content, resolution, (resolution // 8,) * 2).getbbox()
+            alignment = 3 if resolution == 768 else 1
+            expected_box = ((bounds[0] - 2) // alignment * alignment,
+                            (bounds[1] - 2) // alignment * alignment,
+                            (bounds[2] + 2 + alignment - 1) // alignment * alignment,
+                            (bounds[3] + 2 + alignment - 1) // alignment * alignment)
+            self.assertEqual(cache["box"], expected_box)
+            rgb_box = cache["provenance"]["rgb_box_xyxy"]
+            stride = resolution // 64
+            self.assertTrue(all(value % stride == 0 and value % 8 == 0 for value in rgb_box))
+            self.assertEqual(rgb_box, [n * 8 for n in cache["box"]])
+            self.assertEqual(cache["provenance"]["display_size_hw"],
+                             [(rgb_box[3] - rgb_box[1]) // stride, (rgb_box[2] - rgb_box[0]) // stride])
+            global_box = tuple(value // stride for value in rgb_box)
+            full64 = rgb.resize((64, 64), Image.Resampling.BOX).crop(global_box)
+            expected_pixels = torch.tensor(list(full64.getdata()), dtype=torch.float32)
+            expected_pixels = expected_pixels.reshape(full64.height, full64.width, 3).permute(2, 0, 1).unsqueeze(0) / 255
+            self.assertTrue(torch.allclose(cache["gt"], expected_pixels, atol=1e-6))
+            selected = cache["mask"].expand_as(cache["gt"]) > 0
+            expected = torch.tensor([25, 80, 130]).reshape(1, 3, 1, 1) / 255
+            self.assertTrue(torch.allclose(cache["gt"][selected], expected.expand_as(cache["gt"])[selected]))
+            self.assertTrue(torch.all((cache["mask"] >= 0) & (cache["mask"] <= 1)))
+        # Native64 one-pixel ink feature retains global sampling phase, not a fractional crop grid.
+        sparse = Image.new("RGB", (64, 64), "white")
+        sparse.putpixel((27, 31), (0, 0, 0))
+        rgb = smoke.prepare_rgb(sparse, 768, 768)
+        cache = smoke.decoded_feature_cache(rgb, [{"x": 27, "y": 31, "width": 1, "height": 1}],
+                                            768, 768, (96, 96))
+        global_box = cache["provenance"]["global_display_box_xyxy"]
+        self.assertTrue(torch.equal(cache["gt"][0, :, 31 - global_box[1], 27 - global_box[0]], torch.zeros(3)))
+        self.assertEqual((cache["gt"] == 0).sum().item(), 3)
+        full64 = rgb.resize((64, 64), Image.Resampling.BOX).crop(tuple(global_box))
+        expected_pixels = torch.tensor(list(full64.getdata()), dtype=torch.float32)
+        expected_pixels = expected_pixels.reshape(full64.height, full64.width, 3).permute(2, 0, 1).unsqueeze(0) / 255
+        self.assertTrue(torch.equal(cache["gt"], expected_pixels))
+        edge = [{"x": 0, "y": 0, "width": 1, "height": 1},
+                {"x": 63, "y": 63, "width": 1, "height": 1}]
+        with self.assertRaisesRegex(ValueError, "full image"):
+            smoke.decoded_feature_cache(source.resize((768, 768)), edge, 768, 768, (96, 96))
+        cache = smoke.decoded_feature_cache(source.resize((768, 768)), edge[:1], 768, 768, (96, 96))
+        self.assertEqual(cache["box"][:2], (0, 0))
+        with self.assertRaisesRegex(ValueError, "8x"):
+            smoke.decoded_feature_cache(source.resize((768, 768)), regions, 768, 768, (95, 95))
+
+    @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU API test")
+    def test_decoded_x0_epsilon_velocity_exact_and_gradient(self):
+        import torch
+        clean, noise = torch.randn(1, 4, 8, 8), torch.randn(1, 4, 8, 8)
+        alpha = torch.tensor(0.7)
+        noisy = alpha.sqrt() * clean + (1 - alpha).sqrt() * noise
+        velocity = alpha.sqrt() * noise - (1 - alpha).sqrt() * clean
+        for kind, target in (("epsilon", noise), ("v_prediction", velocity)):
+            prediction = target.clone().requires_grad_()
+            recovered = smoke.predicted_x0(noisy, prediction, alpha, kind)
+            self.assertTrue(torch.allclose(recovered, clean, atol=1e-6))
+            recovered.sum().backward()
+            self.assertTrue(torch.isfinite(prediction.grad).all())
+            self.assertGreater(prediction.grad.abs().sum().item(), 0)
+
+    @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU API test")
+    def test_decoded_cpu_toy_frozen_input_grad_and_crop_locality(self):
+        import torch
+        from types import SimpleNamespace
+        class ToyDecoder(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.layer = torch.nn.Conv2d(4, 3, 1, bias=False)
+                torch.nn.init.constant_(self.layer.weight, 0.1)
+                self.shape_seen = None
+            def decode(self, latent):
+                self.shape_seen = latent.shape
+                return SimpleNamespace(sample=torch.nn.functional.interpolate(self.layer(latent), scale_factor=8))
+        vae = ToyDecoder().float().eval().requires_grad_(False)
+        before = [p.detach().clone() for p in vae.parameters()]
+        source = Image.new("RGB", (768, 768), (25, 80, 130))
+        cache = smoke.decoded_feature_cache(source, [{"x": 25, "y": 25, "width": 8, "height": 8}],
+                                            768, 768, (96, 96))
+        latent = torch.zeros(1, 4, 96, 96, requires_grad=True)
+        loss = smoke.decoded_feature_loss(vae, latent, cache, 0.13025)
+        loss.backward()
+        left, top, right, bottom = cache["box"]
+        self.assertEqual(vae.shape_seen[-2:], (bottom - top, right - left))
+        self.assertLess(right - left, 96)
+        self.assertTrue(torch.isfinite(loss))
+        self.assertGreater(latent.grad.abs().sum().item(), 0)
+        outside = latent.grad.clone()
+        outside[..., top:bottom, left:right] = 0
+        self.assertEqual(outside.abs().sum().item(), 0)
+        self.assertTrue(all(not p.requires_grad and p.grad is None and torch.equal(p, old)
+                            for p, old in zip(vae.parameters(), before)))
+        # A change completely outside the source union does not affect the masked RGB objective.
+        masked = cache["mask"] == 0
+        altered = {**cache, "gt": cache["gt"] + masked.expand_as(cache["gt"]) * 0.4}
+        self.assertTrue(torch.equal(loss, smoke.decoded_feature_loss(vae, latent, altered, 0.13025)))
+
     @unittest.skipUnless(os.environ.get("SDXL_SMOKE_CPU_API_TEST") == "1", "optional pinned-runtime CPU API test")
     def test_real_diffusers_save_delete_reload_cpu(self):
         import torch

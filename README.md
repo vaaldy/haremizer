@@ -685,9 +685,9 @@ Each source caches only one fp32 `1 + (weight - 1) * mask` CPU tensor (at most
 The noise/velocity loss is `sum(weights * squared_error) / sum(expanded_weights)`
 across batch/channels/spatial dimensions: outside weight remains 1 and the global
 loss scale is normalized rather than implicitly multiplying the learning rate.
-The detached source-only prior term is unchanged. No VAE decode gradients,
-new model/detection, heldout geometry/loss, generated-image feedback, or pixel
-postprocessing is introduced.
+The detached source-only prior term is unchanged. Facial noise weighting alone
+introduces no VAE decode gradients, new model/detection, heldout geometry/loss,
+generated-image feedback, or pixel postprocessing.
 
 Outcome evidence records source hashes/regions, content/padding/latent layout,
 binary-mask hash and selected-pixel count, cache size, weight, and per-step
@@ -698,6 +698,49 @@ strict proportions, or unclipped heads**. Any new explicit retraining needs a
 separately bounded source-annotated pilot and independent visual evaluation;
 it is not a robust model or promotion. The completed original 12-hour work
 window above is archival, not a reusable clock for a renewed request.
+
+An experimental refine-only `decoded_feature_loss_weight` (finite numeric
+0..0.25, default 0) adds a **source-only decoded facial L1** term. Missing/zero
+keeps the legacy loss and VAE deletion path exactly; no auxiliary cache, decode,
+or CPU-thread change occurs. Positive weight requires valid `facial_regions`
+on every training row; heldout annotations remain forbidden. Full-image facial
+crop requests are rejected before ML imports. This is not a contrast/geometry
+success claim: a new frozen coordinator and bounded 50-step memory/visual gate
+are required before any longer fit.
+
+At timesteps `t <= 250`, derive unclipped clean latents without detach:
+`x0=(xt-sqrt(1-alpha_bar_t)*epsilon)/sqrt(alpha_bar_t)` or, for velocity,
+`x0=sqrt(alpha_bar_t)*xt-sqrt(1-alpha_bar_t)*v`. Crop the latent facial-union
+bounding box plus two latent cells of context, then align bounds outward to
+`LCM(VAE stride 8, display stride resolution/64)` and clamp to the image.
+This means latent alignment 3 at768 and1 at512. Only this
+crop is transferred differentiably to CPU and decoded after dividing by the
+local VAE scaling factor. After the ordinary latent cache, the frozen local VAE
+is retained on CPU fp32 in eval mode; its parameters never receive gradients.
+Process-local Torch CPU threads are bounded to two only when enabled. No full
+768px gradient decode, new model, GPU VAE during training, generated GT or
+heldout conditioning is introduced.
+
+Ground truth is the corresponding **actual `prepare_rgb` source RGB crop**,
+not a VAE reconstruction. Both decoded RGB `(decode+1)/2` (unclamped) and source
+RGB `[0,1]` are AREA resized to exact `crop_height/display_stride` by
+`crop_width/display_stride`. Crop boundaries are aligned to the global64 display
+grid: no fractional resize or phase shift is introduced. The same source-rectangle union is resized with
+AREA to form fractional coverage weights. The auxiliary loss is
+`sum(abs(decoded64-source64)*mask64) / sum(mask64 expanded over RGB channels)`.
+No additional dark-ink weighting is used. The differentiable CPU scalar moves
+back to the prediction device and adds `decoded_feature_loss_weight*decoded_loss`
+to the unchanged noise/prior objective. Inactive steps add no auxiliary term.
+
+Evidence records crop bounds, two-cell margin, source/prepared-RGB/crop-GT/mask
+hashes, mapping, cache bytes, VAE weight hash/frozen/device/dtype state and
+per-step active/inactive status, timestep, source hash and decoded loss. Tests
+cover pre-ML bounds/annotations, padding/layout/global display phase (including
+native one-pixel ink), both x0 formulas and CPU toy input gradients with frozen
+parameters and crop locality. ML-dependent tests use the existing optional
+`SDXL_SMOKE_CPU_API_TEST=1` guard. Cropped VAE context, CPU time/RAM and
+cross-device backward remain risks;
+these tests are not a real-GPU memory or visual acceptance gate.
 
 Refinement requests also require `continuation`, either `null` for the unchanged
 fresh-base LoRA initializer or exactly:

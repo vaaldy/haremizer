@@ -90,7 +90,8 @@ def preflight(request_path, output, *, pilot=False, refine=False):
     config = request["config"]
     keys(config, {*CONFIG, "steps", *({"content_resolution"} if refine else set()),
                   *({"prior_preservation_weight"} if refine and "prior_preservation_weight" in config else set()),
-                  *({"facial_loss_weight"} if refine and "facial_loss_weight" in config else set())}, "config")
+                  *({"facial_loss_weight"} if refine and "facial_loss_weight" in config else set()),
+                  *({"decoded_feature_loss_weight"} if refine and "decoded_feature_loss_weight" in config else set())}, "config")
     fixed = {k: v for k, v in CONFIG.items() if not refine or k not in ("seed", "learning_rate", "resolution")}
     if any((type(config[k]) not in ((int, float) if type(v) is float else (int,))) or
            config[k] != v for k, v in fixed.items()):
@@ -108,6 +109,10 @@ def preflight(request_path, output, *, pilot=False, refine=False):
         weight = config["prior_preservation_weight"]
         if type(weight) not in (int, float) or not 0 <= weight <= 1 or not math.isfinite(weight):
             raise ValueError("prior_preservation_weight must be finite 0..1")
+    decoded_weight = config.get("decoded_feature_loss_weight", 0)
+    if (type(decoded_weight) not in (int, float) or not 0 <= decoded_weight <= 0.25 or
+            not math.isfinite(decoded_weight)):
+        raise ValueError("decoded_feature_loss_weight must be finite 0..0.25")
     facial_weight = config.get("facial_loss_weight", 1)
     if (type(facial_weight) not in (int, float) or not 1 <= facial_weight <= 4 or
             not math.isfinite(facial_weight)):
@@ -245,7 +250,10 @@ def preflight(request_path, output, *, pilot=False, refine=False):
             if refine and name == "examples":
                 if "facial_regions" in row:
                     validate_facial_regions(row["facial_regions"])
-                elif facial_weight > 1:
+                    if decoded_weight > 0:
+                        decoded_crop_box(row["facial_regions"], config["content_resolution"],
+                                         config["resolution"], (config["resolution"] // 8,) * 2)
+                elif facial_weight > 1 or decoded_weight > 0:
                     raise ValueError("facial_regions required on every weighted training example")
             records.append({**row, "path": str(image), "source_page": {**source, "path": str(page)},
                             **({"pixel_sha256": pixel_hash,
@@ -372,6 +380,84 @@ def denoising_loss(predicted, target, weights=None):
     return (squared * weights).sum() / weights.expand_as(squared).sum()
 
 
+def predicted_x0(noisy, predicted, alpha_cumprod, prediction_type):
+    """Unclipped clean latent estimate; preserve the prediction gradient."""
+    import torch
+    alpha = torch.as_tensor(alpha_cumprod, device=noisy.device, dtype=torch.float32)
+    if prediction_type == "epsilon":
+        return (noisy.float() - (1 - alpha).sqrt() * predicted.float()) / alpha.sqrt()
+    if prediction_type == "v_prediction":
+        return alpha.sqrt() * noisy.float() - (1 - alpha).sqrt() * predicted.float()
+    raise ValueError("only epsilon/v_prediction scheduler targets supported")
+
+
+def decoded_crop_box(regions, content_resolution, resolution, latent_size):
+    """Pre-ML safety/layout check shared by preflight and actual CPU cache."""
+    mask = facial_mask(regions, content_resolution, resolution, latent_size)
+    bounds = mask.getbbox()
+    if bounds is None:
+        raise ValueError("facial union vanished at latent resolution")
+    left, top, right, bottom = bounds
+    box = (max(0, left - 2), max(0, top - 2),
+           min(latent_size[0], right + 2), min(latent_size[1], bottom + 2))
+    if resolution != latent_size[0] * 8 or resolution != latent_size[1] * 8:
+        raise ValueError("decoded feature loss requires 8x VAE latent layout")
+    # Align outward to both VAE8 and the global native64 display sampling grid.
+    display_stride = resolution // 64
+    alignment = math.lcm(8, display_stride) // 8
+    left, top, right, bottom = box
+    box = (left // alignment * alignment, top // alignment * alignment,
+           min(latent_size[0], ((right + alignment - 1) // alignment) * alignment),
+           min(latent_size[1], ((bottom + alignment - 1) // alignment) * alignment))
+    if box == (0, 0, latent_size[0], latent_size[1]):
+        raise ValueError("decoded feature crop must not span the full image")
+    return box, mask
+
+
+def decoded_feature_cache(rgb, regions, content_resolution, resolution, latent_size):
+    """CPU-only real prepared source RGB and union mask, never VAE-generated GT."""
+    import torch
+    import torch.nn.functional as F
+    box, mask = decoded_crop_box(regions, content_resolution, resolution, latent_size)
+    rgb_box = tuple(value * 8 for value in box)
+    crop = rgb.crop(rgb_box)
+    union = facial_mask(regions, content_resolution, resolution, (resolution, resolution)).crop(rgb_box)
+    gt = torch.tensor(list(crop.getdata()), dtype=torch.float32).reshape(crop.height, crop.width, 3)
+    gt = gt.permute(2, 0, 1).unsqueeze(0) / 255
+    binary = torch.tensor(list(union.getdata()), dtype=torch.float32).reshape(1, 1, crop.height, crop.width)
+    display_stride = resolution // 64
+    display_size = (crop.height // display_stride, crop.width // display_stride)
+    gt64 = F.interpolate(gt, size=display_size, mode="area")
+    mask64 = F.interpolate(binary, size=display_size, mode="area")
+    if mask64.sum().item() <= 0:
+        raise ValueError("decoded feature mask is empty")
+    provenance = {"latent_box_xyxy": list(box), "rgb_box_xyxy": list(rgb_box),
+                  "display_size_hw": list(display_size), "margin_latent_cells": 2,
+                  "latent_alignment": math.lcm(8, display_stride) // 8,
+                  "display_stride_rgb": display_stride,
+                  "global_display_box_xyxy": [value // display_stride for value in rgb_box],
+                  "gt_rgb_sha256": hashlib.sha256(crop.tobytes()).hexdigest(),
+                  "mask_sha256": hashlib.sha256(union.tobytes()).hexdigest(),
+                  "latent_mask_sha256": hashlib.sha256(mask.tobytes()).hexdigest(),
+                  "mapping": "prepare_rgb source crop; source union NEAREST with centered padding; bbox+2 latent cells aligned outward to LCM(VAE8,global64 stride); both AREA to exact crop_px/display_stride",
+                  "cache_bytes": (gt64.numel() + mask64.numel()) * 4}
+    return {"box": box, "gt": gt64, "mask": mask64, "provenance": provenance}
+
+
+def decoded_feature_loss(vae, clean_latent, cached, scaling_factor):
+    """Differentiable GPU->CPU crop decode, frozen VAE; no full-image decode."""
+    import torch
+    import torch.nn.functional as F
+    left, top, right, bottom = cached["box"]
+    crop = clean_latent[..., top:bottom, left:right].to(device="cpu", dtype=torch.float32)
+    decoded = (vae.decode(crop / scaling_factor).sample + 1) / 2
+    if decoded.shape[-2:] != ((bottom - top) * 8, (right - left) * 8):
+        raise RuntimeError("VAE crop output layout mismatch")
+    display = F.interpolate(decoded, size=cached["gt"].shape[-2:], mode="area")
+    weights = cached["mask"].expand_as(display)
+    return ((display - cached["gt"]).abs() * weights).sum() / weights.sum()
+
+
 def load_continuation(unet, path):
     import torch
     from diffusers import StableDiffusionXLPipeline
@@ -439,6 +525,15 @@ def train(report, output, persist):
         raise RuntimeError("GPU required; no CPU training fallback")
     config = report["request"]["config"]
     resolution = config["resolution"]
+    decoded_weight = config.get("decoded_feature_loss_weight", 0)
+    auxiliary_cache = []
+    if decoded_weight > 0:
+        torch.set_num_threads(2)
+        report["decoded_feature_loss"] = {
+            "weight": decoded_weight, "active_timestep_max": 250, "cpu_threads": torch.get_num_threads(),
+            "formula": "loss=noise_loss+prior_weight*prior_loss+decoded_weight*sum(abs(AREA((VAE.decode(crop(x0)/scale)+1)/2)-AREA(real_prepare_rgb_crop))*AREA(source_union_mask))/sum(AREA(source_union_mask).expand_as(RGB))",
+            "x0": "epsilon:(xt-sqrt(1-alpha)*eps)/sqrt(alpha); v:sqrt(alpha)*xt-sqrt(1-alpha)*v; no detach/clamp",
+            "scope": "training source-only cropped CPU fp32 frozen local VAE; no heldout/generated GT; no full-image gradient decode"}
     facial_weight = config.get("facial_loss_weight", 1)
     if facial_weight > 1:
         report["facial_loss"] = {"weight": facial_weight,
@@ -552,9 +647,21 @@ def train(report, output, persist):
                     "latent_size": list(mask.size), "binary_sha256": hashlib.sha256(mask.tobytes()).hexdigest(),
                     "selected_latent_pixels": sum(mask.getdata()),
                     "weight": facial_weight, "cpu_cache_bytes": item["facial_weights"].numel() * 4}
+            if decoded_weight > 0:
+                auxiliary = decoded_feature_cache(rgb, row["facial_regions"], config["content_resolution"],
+                                                  resolution, (latent.shape[-1], latent.shape[-2]))
+                row["cached_decoded_features"] = {**auxiliary["provenance"], "source_sha256": row["sha256"],
+                                                  "prepared_rgb_sha256": hashlib.sha256(rgb.tobytes()).hexdigest()}
+                auxiliary_cache.append(auxiliary)
             item["tokens"] = torch.cat(item["tokens"], dim=-1)
             item["time_ids"] = torch.tensor([time_ids], dtype=torch.float16)
-        del pixels, latent, vae
+        del pixels, latent
+        if decoded_weight > 0:
+            vae.to("cpu").float().eval().requires_grad_(False)
+            report["decoded_feature_loss"].update(vae_frozen=True, vae_device="cpu", vae_dtype="float32",
+                vae_weights_sha256=report["model"]["file_sha256"]["vae/diffusion_pytorch_model.safetensors"])
+        else:
+            del vae
     gc.collect()
     torch.cuda.empty_cache()
     memory()
@@ -628,9 +735,18 @@ def train(report, output, persist):
             prior_loss = (torch.nn.functional.mse_loss(predicted.float(), prior.float())
                           if prior is not None else noise_loss.new_zeros(()))
             loss = noise_loss + prior_weight * prior_loss
+        decoded_loss = None
+        if decoded_weight > 0 and timestep.item() <= 250:
+            clean = predicted_x0(noisy, predicted, scheduler.alphas_cumprod[timestep.item()], prediction)
+            decoded_loss = decoded_feature_loss(vae, clean, auxiliary_cache[step % len(cache)],
+                                                vae.config.scaling_factor)
+            finite(decoded_loss)
+            loss = loss + decoded_weight * decoded_loss.to(predicted.device)
         finite(predicted, loss)
         memory()
         scaler.scale(loss).backward()
+        if decoded_weight > 0 and any(p.requires_grad or p.grad is not None for p in vae.parameters()):
+            raise RuntimeError("auxiliary VAE must remain frozen and gradient-free")
         scaler.unscale_(optimizer)
         if any(p.grad is None for p in adapters):
             raise RuntimeError("adapter missing gradient")
@@ -647,9 +763,20 @@ def train(report, output, persist):
                                 **({"weighted_noise_loss": noise_loss.item(),
                                     "source_sha256": report["inputs"][step % len(cache)]["sha256"]}
                                    if facial_weight > 1 else {}),
+                                **({"decoded_feature_active": decoded_loss is not None,
+                                    "timestep": timestep.item(),
+                                    "decoded_loss": decoded_loss.item() if decoded_loss is not None else 0.0,
+                                    "decoded_source_sha256": report["inputs"][step % len(cache)]["sha256"]}
+                                   if decoded_weight > 0 else {}),
                                 "gradient_norm_before_clip": norm.item(),
                                 "seconds": time.monotonic() - started})
         persist()
+        if decoded_loss is not None:
+            del clean, decoded_loss
+    if decoded_weight > 0:
+        report["decoded_feature_loss"]["vae_frozen_after"] = all(
+            not p.requires_grad and p.grad is None for p in vae.parameters())
+        del vae, auxiliary_cache
     report["phase"] = "frozen_verification"
     persist()
     after = frozen_hash(unet)
