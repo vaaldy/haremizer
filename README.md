@@ -40,6 +40,12 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Global **25** aligned training/evaluation quality conditioning and produced
+  much stronger style changes, confirming a conditioning interaction. Oversized
+  eyes/coarse distortions and adherence failures still reject promotion.
+  Global **26** reduces only LR back to2e-5 with those captions fixed, testing
+  adaptation dose rather than adding epochs or manually repairing outputs.
+
 - Global **24** removed quality tokens identically in both evaluation arms.
   Learned coarse styling became much stronger but fidelity/proportions failed;
   baseline artifacts also changed. The next recorded batch aligns training
