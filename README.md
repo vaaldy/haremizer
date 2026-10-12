@@ -36,6 +36,24 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- A renewed facial-design pilot trained a **fresh 150-update LoRA** with 3×
+  source-annotated facial loss and a 0.1 source-only prior anchor. Four training
+  identities/three publishers and three heldout identity groups were used.
+  Licensed-reference crop/contrast changes and one machine-authored two-pixel
+  nose mark are disclosed; no model-generated portrait entered training.
+  All numerical/frozen-weight/reload checks passed, and all **133 CPU tests**
+  passed. **The requested learned design goal did not pass visual review.**
+- Fixed original-prompt outputs showed modest/mixed facial changes. A separate
+  single design-phrase control applied identical conditioning to baseline and
+  candidate: darker mouths largely occurred in the unloaded control too, while
+  the LoRA regressed silver-hair eye proportions. Actual 64px BOX/32-color views
+  were inspected without reinking; visibility/proportions remain inconsistent.
+  Checkpoint retained, not promoted; no further identical fitting is queued.
+  Evidence: `runs/facial-design-20261012/visual-review.json` and
+  `runs/facial-design-20261012/design-profile/raw64-paired.png`.
+  This renewed run used its own explicit
+  deadline, preserved history, and is not an extension of the archived clock.
+
 - The 2026-10-12 overnight work completed nine weight-training stages and one
   paired sampler diagnostic. **No model is quality-accepted or robust.** The
   original work deadline remains `2026-10-12T11:57:11Z`; changing trainer/data
