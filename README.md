@@ -40,6 +40,14 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Autonomous global experiment **13** retained every facial150 setting except
+  integer-grid content768. Numerical/frozen/reload checks passed, but actual64
+  inspection found no reliable automatic bold-feature gain; crops, pale nose
+  marks and decoration persisted. It is rejected for promotion, not discarded.
+  The input-grid correction remains valid. The next hypothesis is a bounded
+  decoded64 source-feature objective, CPU-proven before GPU. Mission/visual
+  ledger: `runs/autonomous-design-20261012/mission.json` and `review-013.json`.
+
 - A renewed facial-design pilot trained a **fresh 150-update LoRA** with 3×
   source-annotated facial loss and a 0.1 source-only prior anchor. Four training
   identities/three publishers and three heldout identity groups were used.
