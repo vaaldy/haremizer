@@ -40,6 +40,12 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Direct global **19** completed Min-SNR gamma5 with numerical checks intact;
+  all-eight/native64 inspection found little meaningful feature improvement.
+  It is not promoted. Global **20** is a one-variable learning-rate strength
+  test (`2e-5`→`1e-4`) from the same parent for the same 100 updates, not another
+  step extension. Oversized-eye or descriptor regressions remain hard gates.
+
 - Global **18** tested shared `upper body` framing on baseline and warm500.
   Dark-braid head cropping improved, but other crops, facial-design and
   decoration failures remain; no promotion. Under the renewed direct continuous
