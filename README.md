@@ -40,6 +40,22 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- User approved moving to transparency. Optional `sample.py --layerdiffuse DIR`
+  uses two exact hash-pinned official `lllyasviel/LayerDiffuse_Diffusers` assets
+  (revision `e76ba7e9031888ee9c2595391f218a69a5cbfc20`): the dense SDXL attention
+  offset is added on CPU **before** loading the portrait LoRA; scaled generated
+  latents are decoded with the matching transparency network plus local base VAE.
+  Decoder inference is frozen CPUfp32 with the official eight-transform median,
+  no OpenCV dependency. SDXL, CPUoffload and square dimensions<=768 are required;
+  default RGB sampling is unchanged. This **regenerates RGBA**, not a posthoc
+  background remover preserving an existing PNG exactly. Raw alpha may be soft;
+  term-chan binary-alpha/palette/export/blink validation is still separate.
+  Code attribution/license: `layerdiffuse.py`, `LICENSE.layerdiffuse.txt`.
+  Publisher weight card declares generic `openrail`, without a version/license
+  text; Apache code licensing does not relicense weights, and no commercial
+  redistribution approval is asserted. No new base-model download or global
+  runtime/driver changes. Pilot evidence: `runs/layerdiffuse-pilot-20261013/`.
+
 - Renewed three-check loop closed: **30** (appearance-only under aligned quality
   captions) largely retained27's look but did not reliably fix framing or dark
   facial marks. Both29/30 completed100 updates, finite adapter changes, unchanged

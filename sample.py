@@ -83,7 +83,7 @@ def validate_lora(lora, lora_sha256):
 def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, steps=20,
            width=None, height=None, variant=None, device="cuda", cpu_offload=False,
            model_id=None, revision=None, negative_prompt=None, guidance_scale=7.5,
-           lora=None, lora_sha256=None, scheduler=None):
+           lora=None, lora_sha256=None, scheduler=None, layerdiffuse=None):
     if scheduler is not None and (type(scheduler) is not str or scheduler != "euler_ancestral"):
         raise ValueError("scheduler must be None or 'euler_ancestral'")
     if negative_prompt is not None and (not isinstance(negative_prompt, str) or
@@ -120,6 +120,15 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
     width, height = default_size if width is None else width, default_size if height is None else height
     if any(type(n) is not int or not 64 <= n <= 1024 or n % 64 for n in (width, height)):
         raise ValueError("dimensions must be multiples of 64 from 64..1024")
+    transparency_assets = None
+    if layerdiffuse is not None:
+        if (identity["class"] != "StableDiffusionXLPipeline" or not cpu_offload or
+                width != height or width > 768):
+            raise ValueError("LayerDiffuse requires SDXL, CPU offload and square dimensions <=768")
+        if Path(layerdiffuse).resolve().is_relative_to(output):
+            raise ValueError("output must not contain LayerDiffuse weights")
+        from layerdiffuse import validate
+        transparency_assets = validate(layerdiffuse)
     import torch
     import diffusers
     if not torch.cuda.is_available():
@@ -130,6 +139,12 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
         **({"variant": variant} if variant else {}))
     if scheduler == "euler_ancestral":
         pipeline.scheduler = diffusers.EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)
+    transparent_decoder = None
+    if transparency_assets is not None:
+        from layerdiffuse import merge_attention, Decoder
+        transparency_assets["merged_offset_keys"] = merge_attention(
+            pipeline.unet, transparency_assets["files"]["attention"]["path"])
+        transparent_decoder = Decoder(model, transparency_assets)
     if lora_path is not None:
         validate_lora(lora_path, lora_sha256)
         pipeline.load_lora_weights(str(lora_path.parent), weight_name=lora_path.name,
@@ -157,6 +172,12 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
                                  "; alpha may be opaque; not final 48/64 indexed sprites",
               "visual_quality_assessed": False, "sprite_format_validated": False,
               "training_started": False, "records": []}
+    if transparency_assets is not None:
+        report["layerdiffuse"] = {**transparency_assets, "offset_strength": 1.0,
+                                 "decoder_device": "cpu", "decoder_dtype": "float32",
+                                 "augmentation_passes": 8,
+                                 "merge_order": "LayerDiffuse offset, then portrait LoRA"}
+        report["output_contract"] = "raw learned LayerDiffuse RGBA; not final binary-alpha indexed sprites"
     for number, case in enumerate(cases[:max_cases], 1):
         torch.cuda.synchronize()
         memory = {"scope": "PyTorch allocator per case; not total GPU usage or a memory cap"}
@@ -169,7 +190,9 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
             image = pipeline(prompt=case["prompt"], generator=torch.Generator(device="cuda").manual_seed(case["seed"]),
                              num_inference_steps=steps, width=width, height=height,
                              negative_prompt=negative_prompt, guidance_scale=guidance_scale,
-                             num_images_per_prompt=1).images[0]
+                             num_images_per_prompt=1,
+                             **({"output_type": "latent"} if transparent_decoder else {})).images
+            image = transparent_decoder(image) if transparent_decoder else image[0]
         torch.cuda.synchronize()
         duration = time.monotonic() - started
         if "error" not in memory:
@@ -210,6 +233,8 @@ def main():
     parser.add_argument("--revision")
     parser.add_argument("--lora", type=Path, help="local safetensors adapter <=256 MiB; requires --lora-sha256")
     parser.add_argument("--lora-sha256", help="full lowercase SHA256 of the supplied adapter")
+    parser.add_argument("--layerdiffuse", type=Path,
+                        help="directory containing the two exact hash-pinned official SDXL transparency assets")
     try:
         report = sample(**vars(parser.parse_args()))
     except (ValueError, RuntimeError, OSError, ImportError) as error:

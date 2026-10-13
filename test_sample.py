@@ -74,6 +74,39 @@ class SamplingTests(unittest.TestCase):
         with patch.dict(sys.modules, {"torch": self.torch, "diffusers": self.diffusers}):
             return sample.sample(self.model, self.output, **kwargs)
 
+    def test_layerdiffuse_requires_sdxl_offload_and_safe_dimensions(self):
+        with self.assertRaisesRegex(ValueError, 'LayerDiffuse requires'):
+            self.run_sample(prompt='portrait', layerdiffuse=self.root, cpu_offload=True)
+        self.index['_class_name'] = 'StableDiffusionXLPipeline'
+        self.write_index()
+        for settings in ({'cpu_offload': False},
+                         {'cpu_offload': True, 'width': 1024, 'height': 1024}):
+            with self.assertRaisesRegex(ValueError, 'LayerDiffuse requires'):
+                self.run_sample(prompt='portrait', layerdiffuse=self.root, **settings)
+        self.loader.from_pretrained.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_layerdiffuse_latent_decode_and_merge_before_portrait_lora(self):
+        self.index['_class_name'] = 'StableDiffusionXLPipeline'
+        self.write_index()
+        latents = object()
+        self.pipeline.side_effect = lambda **kw: SimpleNamespace(images=latents)
+        assets = {'files': {'attention': {'path': '/mock/offset.safetensors'}}}
+        decoder = MagicMock(return_value=Image.new('RGBA', (768, 768), (1, 2, 3, 0)))
+        events = []
+        self.pipeline.load_lora_weights.side_effect = lambda *a, **kw: events.append('portrait')
+        with patch('layerdiffuse.validate', return_value=assets), \
+                patch('layerdiffuse.merge_attention', side_effect=lambda *a: events.append('offset') or 10), \
+                patch('layerdiffuse.Decoder', return_value=decoder):
+            report = self.run_sample(prompt='portrait', cpu_offload=True, layerdiffuse=self.root,
+                                     lora=self.lora, lora_sha256=self.lora_sha256)
+        self.assertEqual(events, ['offset', 'portrait'])
+        decoder.assert_called_once_with(latents)
+        self.assertEqual(self.pipeline.call_args.kwargs['output_type'], 'latent')
+        self.assertEqual(report['records'][0]['mode'], 'RGBA')
+        self.assertEqual(report['layerdiffuse']['augmentation_passes'], 8)
+        self.assertEqual(report['layerdiffuse']['merged_offset_keys'], 10)
+
     def test_offline_loading_fixed_seed_and_actual_png_manifest(self):
         with patch.dict(os.environ, {"HSA_OVERRIDE_GFX_VERSION": "10.3.0"}):
             before = dict(os.environ)

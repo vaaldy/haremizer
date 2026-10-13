@@ -22,7 +22,7 @@ These are visual/annotated measurements, not permission to fabricate automatic l
 
 ## Full deliverable gate — transparency and animation
 
-Transparency remains mandatory, but native-transparency/LayerDiffuse integration is deferred until core portraits pass.
+Transparency remains mandatory. The user explicitly approved the current look and requested LayerDiffuse on2026-10-13, advancing a bounded transparency pilot before formal core reliability acceptance. This changes work priority, not the unmet framing/proportion/adherence gates.
 
 - Final PNGs are **64×64 RGBA**, with genuine background alpha zero—not a white canvas or painted checkerboard. Hair gaps are clear without deleting eye whites, skin highlights or clothing. For term-chan, alpha is binary and there are ≤62 opaque colors.
 - Our ordinary SDXL style LoRA/RGB decoder cannot add alpha by learning a prompt. Preserve source alpha/provenance; distinguish a validated alpha-generation decoder from explicitly labeled background recovery. Do not claim native transparency until its architecture, licensing, loading, ROCm compatibility and actual outputs are verified.
