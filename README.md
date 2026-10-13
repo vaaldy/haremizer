@@ -40,6 +40,19 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- LayerDiffuse pilots **31/32** completed on ROCm at768px with frozen CPUfp32
+  transparency decoding;155 tests pass (10 optional skips). Three actual RGBA
+  outputs were inspected. **Partial result, not reliable alpha generation:**
+  curly portrait remains opaque with both white/transparent background wording;
+  blue-bob has a learned foreground mask with raw soft background haze. Direct
+  BOX64 + alpha>=128 +32 opaque colors yields one clean binary-alpha prototype
+  (`runs/layerdiffuse-pilot-20261013/native-032/case-02.png`), with2418 transparent
+  pixels and all64 top-edge pixels transparent. No RGB key/removal or hand mask.
+  Curly's five transparent pixels are interior artifacts, not a removed backdrop;
+  structural PNG validation alone is therefore not transparency acceptance.
+  Compare `comparison-032.png` and `native-alpha-032.png` in the pilot directory.
+  Both owned process groups are empty;27's original weights/outputs are untouched.
+
 - User approved moving to transparency. Optional `sample.py --layerdiffuse DIR`
   uses two exact hash-pinned official `lllyasviel/LayerDiffuse_Diffusers` assets
   (revision `e76ba7e9031888ee9c2595391f218a69a5cbfc20`): the dense SDXL attention
