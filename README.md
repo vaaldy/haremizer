@@ -40,6 +40,14 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Renewed three-check loop closed: **30** (appearance-only under aligned quality
+  captions) largely retained27's look but did not reliably fix framing or dark
+  facial marks. Both29/30 completed100 updates, finite adapter changes, unchanged
+  frozen-base hashes and exact reload; owned process groups are empty. All eight
+  original outputs per stage and28's four paired novel cases were inspected at
+  large/native64. **27 stays user-preferred**, no replacement/full promotion.
+  Evidence and comparison galleries: `runs/portrait-followup-20261013/`.
+
 - Follow-up **28**:27's style transfers to four new frozen descriptions/seeds,
   but three crop hair/close-up framing; baseline also crops. No robustness claim.
   **29**: training camera-caption alignment alone did not improve framing and
