@@ -40,6 +40,17 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- User-authorized **CPU sprite legibility check**, not another LoRA step:
+  `sprite_check.check_legibility()` verifies hash-bound, explicitly annotated
+  intended mouth pixels use1–2 declared ink colours and uniform strokes follow
+  continuous, single-colour eight-connected paths. Failures return
+  `redo_required`; this is not automatic landmark detection or an overall verdict.
+  Current custom maid sprite: six colours/gaps along the intended mouth stroke
+  reduced to one; two centre seams made continuous. The same24 cleanup pixels
+  changed in neutral/blink; alpha, unrelated pixels and the deeper blink remain
+  unchanged. Evidence/preview: `artifacts/mint-legibility-01/`. Background alpha
+  remains incomplete; this asset cleanup is not learned generator improvement.
+
 - LayerDiffuse pilots **31/32** completed on ROCm at768px with frozen CPUfp32
   transparency decoding;155 tests pass (10 optional skips). Three actual RGBA
   outputs were inspected. **Partial result, not reliable alpha generation:**
