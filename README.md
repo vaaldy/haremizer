@@ -40,6 +40,13 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- Follow-up **28**:27's style transfers to four new frozen descriptions/seeds,
+  but three crop hair/close-up framing; baseline also crops. No robustness claim.
+  **29**: training camera-caption alignment alone did not improve framing and
+  softened some features; rejected. Final check **30** freezes Q/K only against
+  27's aligned-quality settings, retaining its upper-body captions and400 parent.
+  The three-check/four-hour bound and user-preferred27 remain unchanged.
+
 - The user explicitly preferred **experiment27** aesthetically and authorized
   a new parent-direct loop. `runs/portrait-followup-20261013/` preserves a separate
   three-check/four-hour window; historical1–27 and the expired mission are intact.
