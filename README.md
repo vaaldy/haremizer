@@ -40,6 +40,12 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- The user explicitly preferred **experiment27** aesthetically and authorized
+  a new parent-direct loop. `runs/portrait-followup-20261013/` preserves a separate
+  three-check/four-hour window; historical1–27 and the expired mission are intact.
+  First check: four frozen novel descriptions/new seeds, base versus27. This
+  gallery is excluded from training; aesthetic preference is not full promotion.
+
 - Global **27** completed the aligned-caption LR bracket at5e-5. All eight
   large/native64 outputs were reviewed: the worst iris regression was avoided,
   but reliable near-black noses/mouths, full-head framing and clean backgrounds

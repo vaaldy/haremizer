@@ -62,6 +62,10 @@ Work only in `/home/valdy/Projects/term-chan/haremizer`. Never mutate parent ter
 
 “Until oblivion” means persistent, surgical improvement while these bounds permit it—not infinite unmonitored execution or pretending success. If only an authorized async job is active, return control and resume on its native completion notification.
 
+## Renewed loop — 2026-10-13
+
+The user requested another loop after explicitly praising experiment27. Preserve27 as the user-preferred aesthetic candidate, not a robust/full-deliverable promotion. A separate parent-direct window is predeclared: at most three GPU experiments including diagnostics, at most four hours from its recorded start, no rollover. Historical experiments1–27 and the expired prior mission remain immutable. First freeze a novel-descriptor/new-seed paired gallery for27; then test training-caption framing alignment; use the last check only when the reviewed evidence justifies it. Existing storage, process, licensing and visual gates remain unchanged.
+
 ## Current state
 
-No model is promoted/robust. Original-corpus best400 remains a useful unpromoted rollback/prototype; the facial-weighted150 checkpoint failed consistent bold-feature/proportion gates. The pixel-grid/VAE research is a verified preprocessing lead, not a completed model improvement. Existing trained-prototype/blink format checks are not full-generator acceptance.
+Experiment27 is user-preferred aesthetically. No model is promoted/robust. Original-corpus best400 remains a useful unpromoted rollback/prototype; the facial-weighted150 checkpoint failed consistent bold-feature/proportion gates. The pixel-grid/VAE research is a verified preprocessing lead, not a completed model improvement. Existing trained-prototype/blink format checks are not full-generator acceptance.
