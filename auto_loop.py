@@ -34,6 +34,24 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def read_log_indexes(path):
+    """Indexes already present, tolerant of a previously concatenated line."""
+    indexes = set()
+    if not path.exists():
+        return indexes
+    decoder = json.JSONDecoder()
+    text = path.read_text()
+    position = 0
+    while position < len(text):
+        while position < len(text) and text[position] in ' \n\r\t':
+            position += 1
+        if position >= len(text):
+            break
+        value, position = decoder.raw_decode(text, position)
+        indexes.add(value.get('index'))
+    return indexes
+
+
 def case_files(directory):
     return [directory / f'sample-{suite}' / f'case-{i:02}.png' for suite in (0, 1) for i in range(1, 5)]
 
@@ -233,15 +251,17 @@ class Driver:
                     'metrics': metrics, 'verdict': verdict, 'baseline': baseline, 'per_case': rows,
                     'checkpoint': checkpoint,
                     'duration_seconds': [p.get('duration_seconds') for p in stage['processes']]})
-        already_logged = any(json.loads(line).get('index') == index
-                             for line in (self.root / 'log.jsonl').read_text().splitlines()
-                             if line.strip()) if (self.root / 'log.jsonl').exists() else False
-        with (self.root / 'log.jsonl').open('a') as stream:
-            stream.write(json.dumps({'index': index, 'hypothesis': hypothesis['name'],
-                                     'score': verdict['score'], 'accepted': verdict['accepted'],
-                                     'regressions': verdict['regressions'], 'metrics': metrics,
-                                     'checkpoint_sha256': checkpoint['sha256'],
-                                     'at': now().isoformat()}) + ('\n' if not already_logged else ''))
+        entry = {'index': index, 'hypothesis': hypothesis['name'], 'score': verdict['score'],
+                 'accepted': verdict['accepted'], 'regressions': verdict['regressions'],
+                 'metrics': metrics, 'checkpoint_sha256': checkpoint['sha256'],
+                 'at': now().isoformat()}
+        logged = read_log_indexes(self.root / 'log.jsonl')
+        if index not in logged:
+            with (self.root / 'log.jsonl').open('a') as stream:
+                stream.write(json.dumps(entry) + '\n')
+            logged.add(index)
+        else:
+            self.write(f'log-duplicate-{index:03}.json', {**entry, 'note': 'index already logged; not appended'})
         cases = {}
         for position, case in enumerate(stage['cases']):
             row = rows[position]
