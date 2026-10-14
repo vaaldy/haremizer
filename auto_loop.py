@@ -212,6 +212,8 @@ class Driver:
         """Score, review and account for a finished stage. Safe to re-run after a restart."""
         stage = loop.state['stages'][-1]
         rows = [measure(path) for path in case_files(Path(stage['directory']))]
+        if len(rows) != len(stage['cases']):
+            raise ValueError('measured outputs must match the frozen case list')
         thresholds = self.thresholds()
         metrics = {**aggregate(rows),
                    'clearance_cases_ok': sum(1 for row in rows
@@ -227,28 +229,41 @@ class Driver:
                     'metrics': metrics, 'verdict': verdict, 'baseline': baseline, 'per_case': rows,
                     'checkpoint': checkpoint,
                     'duration_seconds': [p.get('duration_seconds') for p in stage['processes']]})
+        already_logged = any(json.loads(line).get('index') == index
+                             for line in (self.root / 'log.jsonl').read_text().splitlines()
+                             if line.strip()) if (self.root / 'log.jsonl').exists() else False
         with (self.root / 'log.jsonl').open('a') as stream:
             stream.write(json.dumps({'index': index, 'hypothesis': hypothesis['name'],
                                      'score': verdict['score'], 'accepted': verdict['accepted'],
                                      'regressions': verdict['regressions'], 'metrics': metrics,
                                      'checkpoint_sha256': checkpoint['sha256'],
-                                     'at': now().isoformat()}) + '\n')
+                                     'at': now().isoformat()}) + ('\n' if not already_logged else ''))
+        cases = {}
+        for position, case in enumerate(stage['cases']):
+            row = rows[position]
+            cases[case['case']] = {
+                'glitches': 'not visually reviewed by the driver',
+                'crop_duplicate_face': f"top clearance {row['top_clearance_rows']} rows; not visually reviewed",
+                'adherence': 'not assessed by the driver; descriptor and attire checks need visual review',
+                'readability': f"ink {row['ink_pixels']}, components {row['components']}, largest "
+                               f"{row['largest_component']}, isolated share {row['isolated_share']}"}
         review = {'reviewed_by': 'machine:overnight-driver',
                   'notes': (f"Deterministic gate only, not visual acceptance. {hypothesis['name']}: score "
                             f"{verdict['score']}, regressions {verdict['regressions']}, clearance cases "
-                            f"{metrics['clearance_cases_ok']}/{len(rows)}."),
+                            f"{metrics['clearance_cases_ok']}/{len(rows)}, gates {verdict['gates']}."),
                   'uncertain': True, 'robust_requested': False,
-                  'checks': {'format': True, 'pixel_quality': verdict['accepted'],
+                  'checks': {'format': False, 'pixel_quality': verdict['accepted'],
                              'prompt_adherence': False, 'character_diversity': True,
                              'non_regression': not verdict['regressions']},
                   'binding': loop.status()['review_binding'],
-                  'cases': {row['file']: {'glitches': 'not visually reviewed by the driver',
-                                          'readability': f"ink {row['ink_pixels']}, components "
-                                                         f"{row['components']}, clearance {row['top_clearance_rows']}"}
-                            for row in rows},
+                  'cases': cases,
                   'format_evidence': []}
         review_path = self.write(f'review-{index:03}.json', review)
-        loop.review(review_path)
+        try:
+            loop.review(review_path)
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            self.log(f'stage {index}: review record rejected ({type(error).__name__}: {error}); '
+                     'result retained, loop left awaiting review')
         self.write('latest.json', {'checkpoint': winner, 'stage': stage['number'],
                                    'source': hypothesis['name'], 'score': verdict['score'],
                                    'metrics': metrics})
@@ -261,6 +276,12 @@ class Driver:
                      f"regressions {verdict['regressions']})")
         return verdict
 
+    def next_index(self):
+        """Highest recorded global stage index; results are written before the review is applied."""
+        directory = self.root / 'results'
+        files = list(directory.glob('result-*.json')) if directory.exists() else []
+        return max([int(path.stem.split('-')[1]) for path in files] or [0])
+
     def run(self):
         mission = self.mission
         dataset = json.loads(Path(mission['dataset']).read_bytes())
@@ -268,7 +289,7 @@ class Driver:
         baseline = self.read('baseline-metrics.json')
         cohort_size = mission.get('cohort_size', 8)
         while True:
-            done = self.completed()
+            done = self.next_index()
             if done >= mission['cap']:
                 self.log('stop: experiment cap reached')
                 break
@@ -281,9 +302,12 @@ class Driver:
             cohort = done // cohort_size
             loop = self.loop_for(cohort, mission)
             if loop.state['status'] == 'needs_visual_review':
-                hypothesis = mission['hypotheses'][done]
-                self.log(f'stage {done + 1} {hypothesis["name"]}: finished, recording after restart')
-                self.record_stage(loop, done + 1, hypothesis, baseline)
+                stage = loop.state['stages'][-1]
+                index = cohort * cohort_size + stage['number']
+                hypothesis = mission['hypotheses'][min(index - 1, mission['cap'] - 1)]
+                self.log(f'stage {index} {hypothesis["name"]}: finished, recording'
+                         + (' after restart' if (self.root / f'results/result-{index:03}.json').exists() else ''))
+                self.record_stage(loop, index, hypothesis, baseline)
                 if self.once:
                     break
                 continue
