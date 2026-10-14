@@ -40,6 +40,25 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- **Unattended overnight window** (`auto_loop.py`, `score_sprite.py`, `ink_stats.py`, contract in
+  `runs/overnight-20261013/goal.json`, rewritten into `GOAL.md`): 18 predeclared single-variable
+  hypotheses, at most 8 stages per coordinator directory, one GPU job at a time, deterministic scoring
+  against a matched no-LoRA baseline, restart-safe recording, stop at cap/deadline/three failures.
+- **Root cause measured:** the style adapter's main style set (`everface`, CC0) contains zero near-black
+  ink pixels at the 32/255 threshold, so no pixel-matching loss could ever produce confident marks. The
+  unused `pebonius` CC-BY-4.0 native-64 portraits do contain them, and 15 now form
+  `data/curation-bold-ink-06` with 4 held-out identity groups.
+- **Conditioning already helps:** adding the shared style tokens to the evaluation prompts alone moved
+  the matched baseline from ink 125.6 to 239.1 pixels, largest connected stroke 41.4 to 101.9, and
+  isolated share 0.3437 to 0.2792 — before any training.
+- **Independent review caught two driver faults** (missing `results/` directory; restart deadlock on a
+  stage awaiting review) and one prompt-truncation fault; all fixed, with tests. The one pre-flight
+  adapter trained under the superseded two-token-longer prompts was reviewed as worse than baseline in
+  four of eight cases and was not promoted.
+- Machine acceptance is limited to fragmentation, largest stroke, framing, ink range and background
+  coverage. Attire, cleavage, adherence, identity, blink locality and true alpha remain visually
+  reviewed only.
+
 - User-authorized **CPU sprite legibility check**, not another LoRA step:
   `sprite_check.check_legibility()` verifies hash-bound, explicitly annotated
   intended mouth pixels use1–2 declared ink colours and uniform strokes follow

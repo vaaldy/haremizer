@@ -69,3 +69,50 @@ The user requested another loop after explicitly praising experiment27. Preserve
 ## Current state
 
 Experiment27 is user-preferred aesthetically. No model is promoted/robust. Original-corpus best400 remains a useful unpromoted rollback/prototype; the facial-weighted150 checkpoint failed consistent bold-feature/proportion gates. The pixel-grid/VAE research is a verified preprocessing lead, not a completed model improvement. Existing trained-prototype/blink format checks are not full-generator acceptance.
+
+## Overnight window 2026-10-13 (actionable goal)
+
+The user asked for long unattended loops that keep improving the portrait generator until the goal is
+reached, with no human input for a long time, running on `deepseek-v4.1-flash` only. Their request, made
+measurable:
+
+- **Bold, connected, single-tone marks** on the eyelid/eyelash/eyeline, both sleeve seams, the centre
+  placket, the armpit seams, the nose and the mouth. Measured as dark-ink fragmentation: the share of
+  isolated single-pixel components must fall and the largest connected stroke must grow.
+- **Legible at native 64**: a visible nose mark, a small mouth, and distinguishable dark eyes with a
+  retained iris colour.
+- **A complete head**: the subject must not touch the top edge (at least two subject-free rows).
+- **No cleavage**; a white high-collar maid dress is acceptable.
+- **Cyan hair must work**, and requested hair/skin/eye colours and expressions must stay distinguishable.
+- **Localized blink**: eye-region-only change, same silhouette and alpha.
+- **Genuine transparent background**, later, via the hash-pinned LayerDiffuse route already integrated.
+- **No unrequested scenery, frames or stray decoration.**
+
+Machine contract: `runs/overnight-20261013/goal.json`. Automated driver: `auto_loop.py`. Scorecard:
+`score_sprite.py`. Measurements: `ink_stats.py`.
+
+### What runs unattended
+
+`tmux` session `haremizer-overnight` runs `auto_loop.py` with a predeclared list of 18 single-variable
+hypotheses, at most 8 stages per coordinator loop directory, one GPU job at a time, stopping at the
+recorded deadline (ten hours from 2026-10-13T16:47Z), the experiment cap, or three consecutive
+failures. Each stage is trained, sampled on the same eight frozen cases as a matched no-LoRA baseline,
+scored deterministically, reviewed, and appended to `runs/overnight-20261013/{log.jsonl,results/}`. A
+candidate replaces the incumbent only when the aggregate score improves with no regression in
+fragmentation, largest stroke, framing, ink range or background coverage.
+
+### What is deliberately not automatic
+
+Attire, cleavage, prompt adherence, identity fidelity, blink locality and true alpha are **not**
+machine-accepted. They stay open until visually reviewed. The first unsupervised attempt (stage 1 of the
+pre-flight loop, superseded prompt variant) was reviewed and found worse than the matched baseline in
+four of eight cases; it was not promoted.
+
+### Root cause recorded for this window
+
+The style adapter was trained mainly on the `everface` CC0 set, which contains **zero** near-black ink
+pixels at the 32/255 threshold (`runs/seam-corpus-20261013/measurement.json`). A pixel-matching loss
+cannot create ink the sources do not contain. Bold-ink CC-BY-4.0 native-64 sources were available from
+`pebonius` and unused: 15 now form `data/curation-bold-ink-06`. Separately, adding the shared style
+tokens to the evaluation prompts alone raised the matched baseline from ink 125.6 to 239.1 pixels and
+the largest connected stroke from 41.4 to 101.9 before any training.

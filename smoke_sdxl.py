@@ -82,8 +82,11 @@ def preflight(request_path, output, *, pilot=False, refine=False):
     if refine:
         request_keys.add("continuation")
     keys(request, request_keys, "request")
-    if request["reviewed_by"] != "machine:sol" or request["declared_smoke_only"] is not (not style):
-        raise ValueError(f"truthful machine:sol review and declared_smoke_only={not style} required")
+    reviewer = request["reviewed_by"]
+    if (not isinstance(reviewer, str) or not reviewer.startswith("machine:") or
+            not reviewer.removeprefix("machine:").strip() or
+            request["declared_smoke_only"] is not (not style)):
+        raise ValueError(f"truthful machine:<reviewer> declaration and declared_smoke_only={not style} required")
     authorization = request["authorization"]
     keys(authorization, {"user_authorized", "record"}, "authorization")
     if authorization["user_authorized"] is not True or not nonempty(authorization["record"]):

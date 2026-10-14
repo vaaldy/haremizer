@@ -511,7 +511,10 @@ class Loop:
             check_identity(row)
         raw = Path(review_path).read_bytes()
         review = json.loads(raw)
-        if (review.get("reviewed_by") != "machine:sol" or not isinstance(review.get("notes"), str) or
+        reviewer = review.get("reviewed_by")
+        if (not isinstance(reviewer, str) or not reviewer.startswith("machine:") or
+                not reviewer.removeprefix("machine:").strip() or
+                not isinstance(review.get("notes"), str) or
                 not review["notes"].strip() or type(review.get("uncertain")) is not bool or
                 type(review.get("robust_requested", False)) is not bool):
             raise ValueError("explicit Sol review, notes, uncertainty and boolean robust_requested required")
