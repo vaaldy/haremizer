@@ -331,7 +331,13 @@ class Driver:
                 hypothesis = mission['hypotheses'][min(index - 1, mission['cap'] - 1)]
                 self.log(f'stage {index} {hypothesis["name"]}: finished, recording'
                          + (' after restart' if (self.root / f'results/result-{index:03}.json').exists() else ''))
-                self.record_stage(loop, index, hypothesis, baseline)
+                try:
+                    self.record_stage(loop, index, hypothesis, baseline)
+                except BaseException as error:  # noqa: BLE001 - never let bookkeeping kill the window
+                    self.failures += 1
+                    self.log(f'stage {index} bookkeeping failed: {type(error).__name__}: {error}')
+                    self.write(f'failure-record-{index:03}.json',
+                               {'error': f'{type(error).__name__}: {error}'})
                 if self.once:
                     break
                 continue
@@ -350,7 +356,12 @@ class Driver:
                                                            'error': f'{type(error).__name__}: {error}'})
                 continue
             self.failures = 0
-            self.record_stage(loop, done + 1, hypothesis, baseline)
+            try:
+                self.record_stage(loop, done + 1, hypothesis, baseline)
+            except BaseException as error:  # noqa: BLE001
+                self.failures += 1
+                self.log(f'stage {done + 1} bookkeeping failed: {type(error).__name__}: {error}')
+                self.write(f'failure-record-{done + 1:03}.json', {'error': f'{type(error).__name__}: {error}'})
             if self.once:
                 break
         (self.root / 'run-finished.flag').touch()
