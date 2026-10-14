@@ -20,6 +20,10 @@ from score_sprite import aggregate, compare, measure  # noqa: E402
 
 STYLE_TOKENS = 'bold dark outlines, flat colors, single-tone marks, clean seams'
 MAX_PROMPT_TOKENS = 77
+BASE_CONFIG = {'batch_size': 1, 'resolution': 768, 'rank': 4, 'gradient_clip': 1.0,
+               'content_resolution': 768, 'prior_preservation_weight': 0.1,
+               'caption_dropout_probability': 0.25, 'snr_gamma': None,
+               'facial_loss_weight': 1, 'decoded_feature_loss_weight': 0, 'seed': 20261014}
 
 
 def utc(text):
@@ -176,7 +180,7 @@ class Driver:
 
     def request(self, index, hypothesis, incumbent, latest, dataset, template):
         plan = json.loads(Path(self.mission['plan']).read_bytes())
-        config = {**template['config'], **hypothesis.get('config', {})}
+        config = {**BASE_CONFIG, **hypothesis.get('config', {})}
         config['facial_loss_weight'] = hypothesis.get('config', {}).get('facial_loss_weight', 1)
         config['decoded_feature_loss_weight'] = hypothesis.get('config', {}).get('decoded_feature_loss_weight', 0)
         if config['decoded_feature_loss_weight'] > 0 or config['facial_loss_weight'] > 1:
