@@ -40,6 +40,12 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- **Aesthetic revision:** the user rejected the heavy-ink look ("nose and mouth look stupid", "skin
+  tone need to be fairer", "i want kawaii style more"). The face gate now prefers small delicate nose and
+  mouth over near-black marks, and defaults to fair skin. `runs/kawaii-20261015/kawaii-comparison.png`
+  shows one kawaii prompt across four adapters: base and experiment 27 look right, stage 6 and the
+  stage 22 gate incumbent look crude. The pebonius bold-ink set is the wrong aesthetic source for kawaii.
+
 - **User accepted stage 6 `bold-prior03`** (`b74277b334d84f3ef2d81d41b58bea6de6c0303c4e5ee503b44957f979a8d93f`),
   preserved at `artifacts/user-accepted/`. The deterministic gate had rejected it (isolated share 0.4425
   versus 0.2792 baseline; ink 472 above the 60-450 range) and the machine read agrees it adds speckle with

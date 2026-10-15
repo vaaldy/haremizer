@@ -153,3 +153,27 @@ alpha, blink and term-chan export gates are untouched.
 Queued automatically once the training window closes: a four-case novel-descriptor run with this
 checkpoint (`novel-006.json`, never trained on) and one real cyan-hair subject rendered through the
 hash-pinned LayerDiffuse route for RGBA.
+
+### Aesthetic revision 2026-10-15 (supersedes part of the core gate)
+
+On seeing the maid portrait and the novel-descriptor sheet the user said: "the nose and mouth look stupid
+also skin tone need to be fairer. i want kawaii style more."
+
+This **supersedes** the earlier "readable 1-3-pixel nose mark and 2-8-pixel mouth, confidently near-black"
+wording for the face. The target is now:
+
+- **Kawaii** overall: soft, rounded, cute. Heavy near-black facial ink, thick eyebrows and heavy eyeliner
+  are now **negatives**, not goals.
+- **Nose and mouth small and delicate** — a tiny nose hint and a small soft mouth, not bold dark marks.
+- **Fair skin** by default; darker tones only when a descriptor asks for them.
+- Eyes may stay large and clean, but not dominate the face with black outlines.
+
+Evidence: `runs/kawaii-20261015/kawaii-comparison.png`. One subject, one kawaii prompt, four adapters.
+The base model and the earlier experiment 27 give the kawaii look; stage 6 (user-accepted for boldness)
+and stage 22 (the gate incumbent) push the crude, ink-heavy look the user rejected.
+
+Consequence for training data: the `pebonius` CC-BY-4.0 set is earthy, high-contrast and largely
+dark-skinned, so it is the **wrong** aesthetic source for this revision. A kawaii adapter would need
+fair-skinned, soft-featured, cute reference art under an acceptable licence. Until such data exists,
+prefer the base model or experiment 27 with kawaii and fair-skin prompt tokens, and keep the bold-ink
+adapters only as archived experiments.
