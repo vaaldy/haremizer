@@ -177,3 +177,26 @@ dark-skinned, so it is the **wrong** aesthetic source for this revision. A kawai
 fair-skinned, soft-featured, cute reference art under an acceptable licence. Until such data exists,
 prefer the base model or experiment 27 with kawaii and fair-skin prompt tokens, and keep the bold-ink
 adapters only as archived experiments.
+
+### Kawaii recipe that works 2026-10-15
+
+Recorded after the aesthetic revision:
+
+- Adapter: experiment 27 (`runs/autonomous-design-20261012/loop-caption-align/stage-003`). The base model
+  also works. The bold-ink adapters (stage 6, stage 22) do not: they produce the crude look the user
+  rejected.
+- Positive tokens: `kawaii, cute, fair skin, cyan hair, bob cut, big eyes, green eyes, tiny nose, small
+  mouth, gentle smile` plus the outfit and framing.
+- Negative tokens: `tan skin, thick eyebrows, heavy eyeliner, freckles, wide nose, big nose, teeth, open
+  mouth, cleavage, rough texture, speckle, cropped head`.
+- Transparency: native LayerDiffuse alpha stayed opaque for this subject, so the working route is a
+  **flat saturated backdrop** (`flat magenta background`) plus an explicit single-colour key. That gives a
+  clean 64x64 sprite with 1486 transparent pixels and 32 opaque colours. This is labelled background
+  recovery, not native transparency.
+- Blink: a 12-pixel localized closed-eye edit on the single visible eye; the other eye is behind the
+  fringe. Outside pixels and alpha are unchanged.
+- Export: `artifacts/kawaii-character-02/neutral.json` passes the parent loader/renderer read-only and
+  both frames round trip to the exact RGBA pixels.
+
+Still open: robustness across seeds and descriptors, a pose with both eyes visible, and native
+transparency rather than a colour key.

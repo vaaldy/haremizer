@@ -40,6 +40,12 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- **Kawaii maid sprite produced.** exp 27 plus kawaii/fair-skin tokens and a flat backdrop key gives
+  `artifacts/kawaii-character-02/neutral.json`: 64x64, 32 opaque colours, 1486 transparent pixels, a
+  12-pixel localized blink, exact RGBA round trip and a passing read-only parent loader/renderer check.
+  Transparency here is a labelled colour key, not native alpha: LayerDiffuse alpha stayed opaque for this
+  prompt. Attention map: `runs/kawaii-20261015/`.
+
 - **Aesthetic revision:** the user rejected the heavy-ink look ("nose and mouth look stupid", "skin
   tone need to be fairer", "i want kawaii style more"). The face gate now prefers small delicate nose and
   mouth over near-black marks, and defaults to fair skin. `runs/kawaii-20261015/kawaii-comparison.png`
