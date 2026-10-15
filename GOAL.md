@@ -88,7 +88,7 @@ measurable:
 - **Genuine transparent background**, later, via the hash-pinned LayerDiffuse route already integrated.
 - **No unrequested scenery, frames or stray decoration.**
 
-Machine contract: `runs/overnight-20261013/goal.json`. Automated driver: `auto_loop.py`. Scorecard:
+Machine contract: `runs/training/overnight-20261013/goal.json`. Automated driver: `auto_loop.py`. Scorecard:
 `score_sprite.py`. Measurements: `ink_stats.py`.
 
 ### What runs unattended
@@ -97,7 +97,7 @@ Machine contract: `runs/overnight-20261013/goal.json`. Automated driver: `auto_l
 hypotheses, at most 8 stages per coordinator loop directory, one GPU job at a time, stopping at the
 recorded deadline (ten hours from 2026-10-13T16:47Z), the experiment cap, or three consecutive
 failures. Each stage is trained, sampled on the same eight frozen cases as a matched no-LoRA baseline,
-scored deterministically, reviewed, and appended to `runs/overnight-20261013/{log.jsonl,results/}`. A
+scored deterministically, reviewed, and appended to `runs/training/overnight-20261013/{log.jsonl,results/}`. A
 candidate replaces the incumbent only when the aggregate score improves with no regression in
 fragmentation, largest stroke, framing, ink range or background coverage.
 
@@ -111,7 +111,7 @@ four of eight cases; it was not promoted.
 ### Root cause recorded for this window
 
 The style adapter was trained mainly on the `everface` CC0 set, which contains **zero** near-black ink
-pixels at the 32/255 threshold (`runs/seam-corpus-20261013/measurement.json`). A pixel-matching loss
+pixels at the 32/255 threshold (`runs/studies/seam-corpus-20261013/internal/measurement.json`). A pixel-matching loss
 cannot create ink the sources do not contain. Bold-ink CC-BY-4.0 native-64 sources were available from
 `pebonius` and unused: 15 now form `data/curation-bold-ink-06`. Separately, adding the shared style
 tokens to the evaluation prompts alone raised the matched baseline from ink 125.6 to 239.1 pixels and
@@ -132,7 +132,7 @@ deadline, same storage ceiling, one GPU job at a time, no history reset. Batch 2
 still adds speckle rather than clean strokes, the LoRA route is closed on this data and objective, and
 the remaining work moves to inference-side control and the deterministic 64px legibility check.
 
-Comparison matrix for review: `artifacts/overnight-matrix/page-NN.png`, regenerated every five minutes
+Comparison matrix for review: `artifacts/reviews/overnight-matrix/page-NN.png`, regenerated every five minutes
 while the window is open. Column 1 of every page is the original no-LoRA render, later columns are the
 training stages, and the native-64 rendition sits under each 768 render.
 
@@ -140,7 +140,7 @@ training stages, and the native-64 rendition sits under each 768 render.
 
 On seeing the comparison matrix the user accepted **stage 6 `bold-prior03`** ("i pretty much accept").
 Checkpoint `b74277b334d84f3ef2d81d41b58bea6de6c0303c4e5ee503b44957f979a8d93f`, preserved at
-`artifacts/user-accepted/stage-006-bold-prior03.safetensors` with its configuration and metrics in the
+`artifacts/archive/user-accepted/stage-006-bold-prior03.safetensors` with its configuration and metrics in the
 sidecar JSON.
 
 Recorded honestly: the deterministic gate **rejected** this stage (isolated share 0.4425 against the
@@ -168,7 +168,7 @@ wording for the face. The target is now:
 - **Fair skin** by default; darker tones only when a descriptor asks for them.
 - Eyes may stay large and clean, but not dominate the face with black outlines.
 
-Evidence: `runs/kawaii-20261015/kawaii-comparison.png`. One subject, one kawaii prompt, four adapters.
+Evidence: `runs/sprites/kawaii-20261015/kawaii-comparison.png`. One subject, one kawaii prompt, four adapters.
 The base model and the earlier experiment 27 give the kawaii look; stage 6 (user-accepted for boldness)
 and stage 22 (the gate incumbent) push the crude, ink-heavy look the user rejected.
 
@@ -182,7 +182,7 @@ adapters only as archived experiments.
 
 Recorded after the aesthetic revision:
 
-- Adapter: experiment 27 (`runs/autonomous-design-20261012/loop-caption-align/stage-003`). The base model
+- Adapter: experiment 27 (`runs/training/autonomous-design-20261012/internal/loop-caption-align/stage-003`). The base model
   also works. The bold-ink adapters (stage 6, stage 22) do not: they produce the crude look the user
   rejected.
 - Positive tokens: `kawaii, cute, fair skin, cyan hair, bob cut, big eyes, green eyes, tiny nose, small
@@ -195,7 +195,7 @@ Recorded after the aesthetic revision:
   recovery, not native transparency.
 - Blink: a 12-pixel localized closed-eye edit on the single visible eye; the other eye is behind the
   fringe. Outside pixels and alpha are unchanged.
-- Export: `artifacts/kawaii-character-02/neutral.json` passes the parent loader/renderer read-only and
+- Export: `artifacts/sprites/kawaii-maid/neutral.json` passes the parent loader/renderer read-only and
   both frames round trip to the exact RGBA pixels.
 
 Still open: robustness across seeds and descriptors, a pose with both eyes visible, and native

@@ -28,8 +28,8 @@ Downloaded base: `cagliostrolab/animagine-xl-4.0`, immutable revision
 `2b7c1b397761bf5bd3cc42e5b39ec99314a75a96`, local safe diffusers component
 snapshot (~6.94 GB), subject to its model-card OpenRAIL++ conditions. Real
 pretrained inference succeeded at 768×768, 12 steps, seed 1234 with CPU offload.
-Evidence: ignored `artifacts/base-model.json`,
-`artifacts/animagine-smoke-01/manifest.json` and `case-01.png`. The inspected
+Evidence: ignored `artifacts/archive/base-model.json`,
+`artifacts/archive/animagine-smoke-01/manifest.json` and `case-01.png`. The inspected
 portrait is recognizable but opaque, with inconsistent pseudo-pixel blocks and
 noisy highlights: **not a valid 64px sprite or trained LoRA**.
 
@@ -41,23 +41,23 @@ Training completion and PNG format checks are not quality acceptance.
 ### Latest reviewed outcomes
 
 - **Kawaii maid sprite produced.** exp 27 plus kawaii/fair-skin tokens and a flat backdrop key gives
-  `artifacts/kawaii-character-02/neutral.json`: 64x64, 32 opaque colours, 1486 transparent pixels, a
+  `artifacts/sprites/kawaii-maid/neutral.json`: 64x64, 32 opaque colours, 1486 transparent pixels, a
   12-pixel localized blink, exact RGBA round trip and a passing read-only parent loader/renderer check.
   Transparency here is a labelled colour key, not native alpha: LayerDiffuse alpha stayed opaque for this
-  prompt. Attention map: `runs/kawaii-20261015/`.
+  prompt. Attention map: `runs/sprites/kawaii-20261015/`.
 
 - **Aesthetic revision:** the user rejected the heavy-ink look ("nose and mouth look stupid", "skin
   tone need to be fairer", "i want kawaii style more"). The face gate now prefers small delicate nose and
-  mouth over near-black marks, and defaults to fair skin. `runs/kawaii-20261015/kawaii-comparison.png`
+  mouth over near-black marks, and defaults to fair skin. `runs/sprites/kawaii-20261015/kawaii-comparison.png`
   shows one kawaii prompt across four adapters: base and experiment 27 look right, stage 6 and the
   stage 22 gate incumbent look crude. The pebonius bold-ink set is the wrong aesthetic source for kawaii.
 
 - **User accepted stage 6 `bold-prior03`** (`b74277b334d84f3ef2d81d41b58bea6de6c0303c4e5ee503b44957f979a8d93f`),
-  preserved at `artifacts/user-accepted/`. The deterministic gate had rejected it (isolated share 0.4425
+  preserved at `artifacts/archive/user-accepted/`. The deterministic gate had rejected it (isolated share 0.4425
   versus 0.2792 baseline; ink 472 above the 60-450 range) and the machine read agrees it adds speckle with
   the bolder ink. User acceptance settles the look, not robustness: novel-descriptor and new-seed checks,
   alpha, blink and export are still open.
-- **Comparison matrix** in `artifacts/overnight-matrix/`: eight columns per page, column 1 always the
+- **Comparison matrix** in `artifacts/reviews/overnight-matrix/`: eight columns per page, column 1 always the
   original no-LoRA render, later columns the training stages, native-64 under each 768 render, refreshed
   every five minutes while the window is open.
 
@@ -65,7 +65,7 @@ Training completion and PNG format checks are not quality acceptance.
   pixels while the isolated-pixel share stayed above the 0.279 baseline and left the 60-450 goal range.
   The token-carrying no-LoRA baseline remains the incumbent. Best scores were stage 17 `bold-qkfreeze-lr`
   0.4645 and stage 18 `bold-prior005-2` 0.4336, both rejected on isolation.
-- **Comparison matrix:** `matrix.py` writes `artifacts/overnight-matrix/page-NN.png` with at most eight
+- **Comparison matrix:** `matrix.py` writes `artifacts/reviews/overnight-matrix/page-NN.png` with at most eight
   columns per page. Column 1 is always the original no-LoRA render, later columns are training stages, and
   the native-64 rendition sits under every 768 render. A tmux job regenerates it every five minutes.
 - **Batch 2 recorded before compute:** cap 18 -> 24 stages, same deadline and storage ceiling, six stages at
@@ -73,7 +73,7 @@ Training completion and PNG format checks are not quality acceptance.
   This is a closure test of the LoRA route, not an expectation of promotion.
 
 - **Unattended overnight window** (`auto_loop.py`, `score_sprite.py`, `ink_stats.py`, contract in
-  `runs/overnight-20261013/goal.json`, rewritten into `GOAL.md`): 18 predeclared single-variable
+  `runs/training/overnight-20261013/goal.json`, rewritten into `GOAL.md`): 18 predeclared single-variable
   hypotheses, at most 8 stages per coordinator directory, one GPU job at a time, deterministic scoring
   against a matched no-LoRA baseline, restart-safe recording, stop at cap/deadline/three failures.
 - **Root cause measured:** the style adapter's main style set (`everface`, CC0) contains zero near-black
@@ -99,7 +99,7 @@ Training completion and PNG format checks are not quality acceptance.
   Current custom maid sprite: six colours/gaps along the intended mouth stroke
   reduced to one; two centre seams made continuous. The same24 cleanup pixels
   changed in neutral/blink; alpha, unrelated pixels and the deeper blink remain
-  unchanged. Evidence/preview: `artifacts/mint-legibility-01/`. Background alpha
+  unchanged. Evidence/preview: `artifacts/sprites/mint-maid-legible/internal/mint-legibility-01`. Background alpha
   remains incomplete; this asset cleanup is not learned generator improvement.
 
 - LayerDiffuse pilots **31/32** completed on ROCm at768px with frozen CPUfp32
@@ -108,7 +108,7 @@ Training completion and PNG format checks are not quality acceptance.
   curly portrait remains opaque with both white/transparent background wording;
   blue-bob has a learned foreground mask with raw soft background haze. Direct
   BOX64 + alpha>=128 +32 opaque colors yields one clean binary-alpha prototype
-  (`runs/layerdiffuse-pilot-20261013/native-032/case-02.png`), with2418 transparent
+  (`runs/sprites/layerdiffuse-pilot-20261013/internal/native-032/case-02.png`), with2418 transparent
   pixels and all64 top-edge pixels transparent. No RGB key/removal or hand mask.
   Curly's five transparent pixels are interior artifacts, not a removed backdrop;
   structural PNG validation alone is therefore not transparency acceptance.
@@ -129,7 +129,7 @@ Training completion and PNG format checks are not quality acceptance.
   Publisher weight card declares generic `openrail`, without a version/license
   text; Apache code licensing does not relicense weights, and no commercial
   redistribution approval is asserted. No new base-model download or global
-  runtime/driver changes. Pilot evidence: `runs/layerdiffuse-pilot-20261013/`.
+  runtime/driver changes. Pilot evidence: `runs/sprites/layerdiffuse-pilot-20261013/`.
 
 - Renewed three-check loop closed: **30** (appearance-only under aligned quality
   captions) largely retained27's look but did not reliably fix framing or dark
@@ -137,7 +137,7 @@ Training completion and PNG format checks are not quality acceptance.
   frozen-base hashes and exact reload; owned process groups are empty. All eight
   original outputs per stage and28's four paired novel cases were inspected at
   large/native64. **27 stays user-preferred**, no replacement/full promotion.
-  Evidence and comparison galleries: `runs/portrait-followup-20261013/`.
+  Evidence and comparison galleries: `runs/sprites/portrait-followup-20261013/`.
 
 - Follow-up **28**:27's style transfers to four new frozen descriptions/seeds,
   but three crop hair/close-up framing; baseline also crops. No robustness claim.
@@ -147,7 +147,7 @@ Training completion and PNG format checks are not quality acceptance.
   The three-check/four-hour bound and user-preferred27 remain unchanged.
 
 - The user explicitly preferred **experiment27** aesthetically and authorized
-  a new parent-direct loop. `runs/portrait-followup-20261013/` preserves a separate
+  a new parent-direct loop. `runs/sprites/portrait-followup-20261013/` preserves a separate
   three-check/four-hour window; historical1–27 and the expired mission are intact.
   First check: four frozen novel descriptions/new seeds, base versus27. This
   gallery is excluded from training; aesthetic preference is not full promotion.
@@ -250,7 +250,7 @@ Training completion and PNG format checks are not quality acceptance.
   marks and decoration persisted. It is rejected for promotion, not discarded.
   The input-grid correction remains valid. The next hypothesis is a bounded
   decoded64 source-feature objective, CPU-proven before GPU. Mission/visual
-  ledger: `runs/autonomous-design-20261012/mission.json` and `review-013.json`.
+  ledger: `runs/training/autonomous-design-20261012/mission.json` and `review-013.json`.
 
 - A renewed facial-design pilot trained a **fresh 150-update LoRA** with 3×
   source-annotated facial loss and a 0.1 source-only prior anchor. Four training
@@ -265,8 +265,8 @@ Training completion and PNG format checks are not quality acceptance.
   the LoRA regressed silver-hair eye proportions. Actual 64px BOX/32-color views
   were inspected without reinking; visibility/proportions remain inconsistent.
   Checkpoint retained, not promoted; no further identical fitting is queued.
-  Evidence: `runs/facial-design-20261012/visual-review.json` and
-  `runs/facial-design-20261012/design-profile/raw64-paired.png`.
+  Evidence: `runs/training/facial-design-20261012/internal/visual-review.json` and
+  `runs/training/facial-design-20261012/internal/design-profile/raw64-paired.png`.
   This renewed run used its own explicit
   deadline, preserved history, and is not an extension of the archived clock.
 
@@ -288,14 +288,14 @@ Training completion and PNG format checks are not quality acceptance.
   Actual image/64px-preview inspection found some cleaner backgrounds and useful
   learned styling/skin/hair gains, but persistent crops and adherence failures.
   This is evaluation evidence, not another weight-training success or promotion.
-  Hash-bound review: `runs/refinement-overnight-20261012/scheduler-diagnostic-01/visual-review.json`.
+  Hash-bound review: `runs/training/refinement-overnight-20261012/internal/scheduler-diagnostic-01/visual-review.json`.
 - One **learned 400-update checkpoint** prototype now has transparent 64px
-  neutral/blink PNGs and `artifacts/trained-best400-curly-01/character/neutral.json`.
+  neutral/blink PNGs and `artifacts/sprites/best400-curly-prototype/neutral.json`.
   Independent AI image review passed this example only. Parent verification
   confirmed exact 4,096-pixel PNG↔JSON frames, 32 colors, and 23 blink edits inside
   26 declared eye pixels with unchanged alpha/surroundings. Soft eye detail and
   enclosed pale hair gaps remain; this does not promote the generator or prove
-  automatic blinking. Preview: `artifacts/trained-best400-curly-01/gallery.png`.
+  automatic blinking. Preview: `artifacts/sprites/best400-curly-prototype/internal/gallery.png`.
 - The dedicated-runtime CPU suite passed all **129 tests**, including actual
   adapter save/reload APIs and read-only Node/term-chan loader integration.
   These validate implementation contracts, not portrait quality.
@@ -335,14 +335,14 @@ Training completion and PNG format checks are not quality acceptance.
   2 GB reservation still fits the strict 100 GB ceiling; no shared cache was
   deleted. Recheck before new downloads.
 
-Ignored evidence: `artifacts/style-pilot-01/review.json`,
-`artifacts/style-pilot-02/review.json`,
-`artifacts/style-pilot-02-curation-review.json`,
+Ignored evidence: `artifacts/archive/style-pilot-01/review.json`,
+`artifacts/archive/style-pilot-02/review.json`,
+`artifacts/archive/style-pilot-02-curation-review.json`,
 `data/curation-draft-02/everface/curation.json`,
-`artifacts/composition-guided-pilot-01/review.json`,
-`artifacts/alternative-model-review/`, `artifacts/storage-accounting-01.json`,
-`artifacts/exported-long-wavy-01/neutral.json` and sibling
-`artifacts/exported-long-wavy-01.compatibility.json`. GPU iteration is paused
+`artifacts/archive/composition-guided-pilot-01/review.json`,
+`artifacts/archive/alternative-model-review/`, `artifacts/archive/storage-accounting-01.json`,
+`artifacts/sprites/long-wavy-export-test/neutral.json` and sibling
+`artifacts/archive/exported-long-wavy-01.compatibility.json`. GPU iteration is paused
 pending broader source/identity curation, not awaiting routine training permission.
 
 The legacy SD1 adapter below retains its separate hash-bound human declaration
@@ -530,14 +530,14 @@ an unsupported compatibility workaround, not proof of complete training stabilit
 No global environment or system-package changes were made.
 
 The isolated environment is `/home/valdy/.cache/haremizer-runtime`; observed
-native/override evidence lives in ignored `artifacts/runtime-native.json` and
-`artifacts/runtime-override.json`. A bounded Ubuntu 24.04 container diagnostic using the same mounted host
+native/override evidence lives in ignored `artifacts/archive/runtime-native.json` and
+`artifacts/archive/runtime-override.json`. A bounded Ubuntu 24.04 container diagnostic using the same mounted host
 PyTorch 2.11 + ROCm 7.2 libraries mirrored the host: native primitive probe
 SIGSEGV, explicit gfx1030 override primitive probe success. This was not a
 self-contained production image and did not train. Diagnostic image:
 `sha256:ce310911b08dd152269a16831d74a71cabfd5c4816f6c104e708119fe750522a`;
-ignored evidence: `artifacts/runtime-container-native.json` and
-`artifacts/runtime-container-override.json`. No further version shuffle is planned.
+ignored evidence: `artifacts/archive/runtime-container-native.json` and
+`artifacts/archive/runtime-container-override.json`. No further version shuffle is planned.
 
 ## Local PNG testbed
 
@@ -550,7 +550,7 @@ PYTHONDONTWRITEBYTECODE=1 python -m unittest -v
 # all tests live in test/; discovery from the repository root finds them
 python images.py validate /path/to/portrait.png --size 48
 python images.py sheet /path/to/a.png /path/to/b.png \
-  --output artifacts/contact-sheet.png --scale 4 --columns 2
+  --output artifacts/reviews/contact-sheet.png --scale 4 --columns 2
 python runtime.py                       # facts only, no torch import
 python runtime.py --torch-probe         # optional tiny GPU primitives, not training
 ```
@@ -707,7 +707,7 @@ and SHA256 (or `null` without an adapter). Inference uses the fp16 pipeline;
 normal inference dtype casting is distinct from the smoke's exact fp32 CPU
 training save/reload verification. Sampling never starts training or promotes
 an adapter. GPU inference with the runtime-smoke adapter passed four matched
-cases in `artifacts/smoke-lora-suite-01` (~6.4 GB peak allocated); this is runtime
+cases in `artifacts/archive/smoke-lora-suite-01` (~6.4 GB peak allocated); this is runtime
 evidence, not quality improvement or an accepted corpus.
 
 ## Bounded SDXL attention-LoRA runtime smoke
@@ -716,14 +716,14 @@ evidence, not quality improvement or an accepted corpus.
 legacy SD1 adapter, a quality trainer, promotion, or synthetic-feedback loop.
 It records the existing broad user authorization and truthful `machine:sol`
 review, never invents human approval or calls the legacy preparation gates.
-Actual GPU evidence: `artifacts/sdxl-smoke-02/outcome.json` records
+Actual GPU evidence: `artifacts/archive/sdxl-smoke-02/outcome.json` records
 `smoke_passed`, two 512px optimizer steps, finite losses/gradients, a nonzero
 adapter update, identical exhaustive frozen-UNet hashes, and exact fp32 CPU
 adapter reload through diffusers. It took about 91 seconds wall time (86.6 seconds
 recorded smoke duration), with peak allocated memory 5.66 GB. This is runtime
 plumbing evidence only, not a quality corpus, accepted sprite, or promotion.
 GPU inference with the trained smoke adapter passed four matched cases in
-`artifacts/smoke-lora-suite-01` (~6.4 GB peak allocated), with no demonstrated
+`artifacts/archive/smoke-lora-suite-01` (~6.4 GB peak allocated), with no demonstrated
 quality improvement or accepted corpus. Attempt 01
 failed before training on the optional `amdsmi` device-memory metric; unavailable
 metrics are now recorded nonfatally, not as zero.
@@ -777,7 +777,7 @@ Parent/coordinator must wrap the entire process in a **900-second timeout**:
 ```sh
 timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
   /home/valdy/.cache/haremizer-runtime/bin/python smoke_sdxl.py \
-  --request artifacts/sdxl-smoke-request.json --output artifacts/sdxl-smoke-01
+  --request artifacts/archive/sdxl-smoke-request.json --output artifacts/archive/sdxl-smoke-01
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test.test_sdxl_smoke
 # Optional CPU-only real save/delete/reload API check, not a model/GPU smoke:
 PYTHONDONTWRITEBYTECODE=1 SDXL_SMOKE_CPU_API_TEST=1 \
@@ -819,12 +819,12 @@ selection, sweep, retry, scaling, promotion or synthetic feedback is added.
 
 Successful execution reports `pilot_completed_unreviewed`, **not** `smoke_passed`
 or quality acceptance; `quality_assessed`, `promotion` and `synthetic_feedback`
-remain false. The executed `artifacts/style-pilot-request-01.json` contains
+remain false. The executed `artifacts/archive/style-pilot-request-01.json` contains
 six training and two heldout identities from the same pebonius source, with
 machine-reviewed rights and adult-appearing descriptions (canonical ages not
 supplied). It is a small learning experiment, **not an accepted quality corpus,
 production training or a quality claim**. GPU execution completed all 100 steps;
-`artifacts/style-pilot-01/review.json` records the subsequent quality rejection.
+`artifacts/archive/style-pilot-01/review.json` records the subsequent quality rejection.
 Parent/coordinator must bound any separately justified future pilot to 900 seconds;
 1024px remains disabled, with no automatic extension. Historical invocation
 (the existing output is deliberately not overwritable):
@@ -832,7 +832,7 @@ Parent/coordinator must bound any separately justified future pilot to 900 secon
 ```sh
 timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
   /home/valdy/.cache/haremizer-runtime/bin/python smoke_sdxl.py --pilot \
-  --request artifacts/style-pilot-request-01.json --output artifacts/style-pilot-01
+  --request artifacts/archive/style-pilot-request-01.json --output artifacts/archive/style-pilot-01
 ```
 
 ### Bounded weights refinement
@@ -1073,7 +1073,7 @@ python prepare.py \
   --model OWNER/APPROVED-MODEL --revision FULL_40_OR_64_HEX_DIGEST \
   --suite evaluation-suite.json --torch-probe \
   --training-resolution 512 --steps 100 --rank 4 \
-  --output artifacts/preparation.json
+  --output artifacts/reviews/preparation.json
 ```
 
 This only writes a plan. Output must be new and outside dataset roots/input files.
@@ -1261,3 +1261,43 @@ run relevant tests, and use all-lowercase subjects prefixed with `[chore]`,
 This repository preference does not override higher-priority session
 instructions. If an inherited session instruction prohibits commit commands,
 prepare reviewable changes without committing until that instruction is updated.
+
+## Repository layout for runs and artifacts
+
+`runs/` and `artifacts/` are gitignored working trees, so they are kept in a fixed shape that makes
+them readable without opening machine files. Both roots hold only a few folders plus an `INDEX.md` and a
+`MOVES.md` path map.
+
+```
+runs/
+  sprites/    character work: kawaii, rado-chan, mint, portrait follow-up, layerdiffuse
+  training/   adapter training windows and their evaluations
+  studies/    reference and measurement studies
+  <run>/
+    *.png          comparison sheets and previews to look at
+    preview.png    thumbnails of the most relevant comparisons inside that run
+    mission.json, goal.json, spec.json, final-report.json
+    logs/          driver, dispatch, stdout and stderr logs
+    internal/      coordinator state, stage directories, requests, results, reviews, raw renders
+
+artifacts/
+  sprites/    one folder per term-chan character
+  reviews/    comparison sheets, matrices, contact sheets
+  studies/    audits and probes: grid, VAE, layerdiffuse, palette, native-64
+  archive/    superseded pilots, smokes, baselines and raw logs
+  <sprite>/
+    neutral.json        the sprite, source of truth for term-chan
+    neutral-base.png    rendered from that JSON so the folder can be read without opening it
+    neutral-blink.png   rendered blink frame
+    preview.png         side-by-side
+    internal/           provenance, annotations, cleanup notes, source renders
+```
+
+Rules the tools enforce or assume:
+
+- A character directory holds **exactly one** sprite JSON at its top level. The term-chan loader treats
+  every top-level `.json` in that directory as an expression, so provenance and annotations belong in
+  `internal/`.
+- `sprite_png.py` renders any sprite JSON frame to PNG and is how the `neutral-*.png` files are produced.
+- `tidy.py` performed the one-time reorganisation and writes `MOVES.md`; historical manifests and
+  provenance files still name the old paths, so use that table to trace them.
