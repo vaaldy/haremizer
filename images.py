@@ -25,7 +25,7 @@ def validate_png(path: Path, sizes: tuple[int, ...] = (48, 64), allow_banners: b
     when `allow_banners` is passed, so nothing silently loosens the portrait contract.
     """
     Image = pillow()
-    if not sizes or any(size not in (48, 64) for size in sizes):
+    if not sizes or (any(size not in (48, 64) for size in sizes) and not allow_banners):
         raise ValueError("allowed PNG sizes must be 48 and/or 64")
     try:
         with Image.open(path) as image:
@@ -44,6 +44,7 @@ def validate_png(path: Path, sizes: tuple[int, ...] = (48, 64), allow_banners: b
             rgba = image.convert("RGBA")
     except (OSError, SyntaxError, Image.DecompressionBombError) as error:
         raise ValueError(f"unreadable PNG: {error}") from error
+    width, height = rgba.width, rgba.height
     data = rgba.tobytes()
     pixels = [tuple(data[index:index + 4]) for index in range(0, len(data), 4)]
     if any(pixel[3] not in (0, 255) for pixel in pixels):
@@ -52,7 +53,10 @@ def validate_png(path: Path, sizes: tuple[int, ...] = (48, 64), allow_banners: b
     transparent = len(pixels) - len(opaque)
     colors = len(set(opaque))
     if not opaque or not transparent:
-        raise ValueError("both transparent and opaque pixels are required")
+        # A full-bleed banner is opaque by design and has no transparent pixels. Square sprites still
+        # need both, so an all-opaque portrait cannot masquerade as a sprite.
+        if not (allow_banners and width != height):
+            raise ValueError("both transparent and opaque pixels are required")
     if colors > 62:
         raise ValueError("palette exceeds 62 opaque colors")
     # Ignore hidden RGB under transparency when detecting re-encoded duplicates.

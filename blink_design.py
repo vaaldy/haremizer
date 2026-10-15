@@ -63,16 +63,19 @@ def cluster(points, size, diagonal=False):
     return sorted(clusters, key=len, reverse=True)
 
 
-def find_face(pixels, size, tolerance=40):
-    centre = size // 2
-    box = [(x, y) for y in range(centre - size // 4, centre + size // 4)
-           for x in range(centre - size // 4, centre + size // 4)]
+def find_face(pixels, size, tolerance=40, height=None):
+    """Largest skin-coloured region around the centre; `height` is required for non-square images."""
+    height = height or size
+    cx, cy = size // 2, height // 2
+    xs = range(max(0, cx - size // 4), min(size, cx + size // 4))
+    ys = range(max(0, cy - height // 4), min(height, cy + height // 4))
+    box = [(x, y) for y in ys for x in xs]
     reference = Counter(pixels[y * size + x][:3] for x, y in box
                         if pixels[y * size + x][3] == 255).most_common(1)[0][0]
     inside = {y * size + x for x, y in box if pixels[y * size + x][3] == 255}
     same = {index for index in inside if near(pixels[index][:3], reference, tolerance)}
     for component in cluster(same, size, diagonal=True):
-        if (size // 2) * size + size // 2 in component or len(component) > 40:
+        if (height // 2) * size + size // 2 in component or len(component) > 40:
             return component, reference
     return max(cluster(same, size, diagonal=True), key=len), reference
 
@@ -167,7 +170,7 @@ def design_declared(sprite_path, boxes, amplitude=1):
     image = load(sprite_path)
     size = image.width
     pixels = list(image.getdata())
-    _, skin_reference = find_face(pixels, size)
+    _, skin_reference = find_face(pixels, size, height=image.height)
     edits, regions, report = {}, [], []
     for box in boxes:
         x, y, width, height = box

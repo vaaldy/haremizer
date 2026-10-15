@@ -28,6 +28,17 @@ class BannerContractTests(unittest.TestCase):
                 self.assertEqual((metrics['width'], metrics['height']), size)
                 self.assertEqual(metrics['opaque_colors'], 2)
 
+    def test_full_bleed_banner_may_be_opaque(self):
+        with tempfile.TemporaryDirectory() as folder:
+            banner = Path(folder) / 'opaque.png'
+            Image.new('RGBA', (128, 48), (30, 40, 60, 255)).save(banner)
+            metrics = validate_png(banner, allow_banners=True)
+            self.assertEqual(metrics['transparent_pixels'], 0)
+            square = Path(folder) / 'opaque-square.png'
+            Image.new('RGBA', (64, 64), (30, 40, 60, 255)).save(square)
+            with self.assertRaisesRegex(ValueError, 'both transparent and opaque'):
+                validate_png(square, allow_banners=True)
+
     def test_undeclared_aspect_ratio_still_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'odd.png'
