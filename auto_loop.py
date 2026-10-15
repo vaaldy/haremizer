@@ -184,17 +184,24 @@ class Driver:
         return plan
 
     # ---- stages ---------------------------------------------------------
-    def loop_for(self, cohort, mission):
+    def loop_for_next(self, done, mission):
+        """First loop directory that can still accept a stage or holds an unreviewed one."""
         cohort_size = mission.get('cohort_size', 8)
-        loop_dir = Path(mission['loop_dir']) / f'loop-{cohort + 1:02d}'
-        if not (loop_dir / 'loop.json').exists():
-            plan = json.loads((self.root / 'training-plan.json').read_bytes())
-            plan['max_stages'] = min(cohort_size, mission['cap'] - cohort * cohort_size)
-            plan['deadline_utc'] = mission['deadline_utc']
-            self.write(f'plan-{cohort + 1:02d}.json', plan)
-            rl.Loop.init(loop_dir, self.root / f'plan-{cohort + 1:02d}.json')
-            self.log(f'initialised loop {loop_dir} (cohort {cohort + 1}, max {plan["max_stages"]} stages)')
-        return rl.Loop(loop_dir)
+        for index in range(1, 65):
+            loop_dir = Path(mission['loop_dir']) / f'loop-{index:02d}'
+            if not (loop_dir / 'loop.json').exists():
+                plan = json.loads((self.root / 'training-plan.json').read_bytes())
+                plan['max_stages'] = max(1, min(cohort_size, mission['cap'] - done))
+                plan['deadline_utc'] = mission['deadline_utc']
+                self.write(f'plan-{index:02d}.json', plan)
+                rl.Loop.init(loop_dir, self.root / f'plan-{index:02d}.json')
+                self.log(f'initialised loop {loop_dir} (max {plan["max_stages"]} stages)')
+            loop = rl.Loop(loop_dir)
+            max_stages = json.loads(Path(loop.state['plan']['path']).read_bytes())['max_stages']
+            if (len(loop.state['stages']) < max_stages or
+                    loop.state['status'] == 'needs_visual_review'):
+                return loop
+        raise ValueError('no loop directory can accept work')
 
     def request(self, index, hypothesis, incumbent, latest, dataset, template):
         plan = json.loads(Path(self.mission['plan']).read_bytes())
@@ -248,6 +255,7 @@ class Driver:
                   'outcome': str(outcome.resolve()), 'outcome_sha256': rl.fingerprint(outcome)}
         self.write(f'results/result-{index:03}.json',
                    {'stage': stage['number'], 'global_index': index, 'hypothesis': hypothesis['name'],
+                    'stage_directory': str(stage['directory']),
                     'metrics': metrics, 'verdict': verdict, 'baseline': baseline, 'per_case': rows,
                     'checkpoint': checkpoint,
                     'duration_seconds': [p.get('duration_seconds') for p in stage['processes']]})
@@ -300,6 +308,13 @@ class Driver:
                      f"regressions {verdict['regressions']})")
         return verdict
 
+    def index_for_directory(self, directory, fallback):
+        """Global index already recorded for a stage directory, else the next index."""
+        for path in sorted((self.root / 'results').glob('result-*.json')):
+            if json.loads(path.read_bytes()).get('stage_directory') == directory:
+                return json.loads(path.read_bytes())['global_index']
+        return fallback
+
     def next_index(self):
         """Highest recorded global stage index; results are written before the review is applied."""
         directory = self.root / 'results'
@@ -311,7 +326,6 @@ class Driver:
         dataset = json.loads(Path(mission['dataset']).read_bytes())
         template = json.loads(Path(mission['template_request']).read_bytes())
         baseline = self.read('baseline-metrics.json')
-        cohort_size = mission.get('cohort_size', 8)
         while True:
             done = self.next_index()
             if done >= mission['cap']:
@@ -323,11 +337,10 @@ class Driver:
             if self.failures >= 3:
                 self.log('stop: three consecutive failures')
                 break
-            cohort = done // cohort_size
-            loop = self.loop_for(cohort, mission)
+            loop = self.loop_for_next(done, mission)
             if loop.state['status'] == 'needs_visual_review':
                 stage = loop.state['stages'][-1]
-                index = cohort * cohort_size + stage['number']
+                index = self.index_for_directory(str(stage['directory']), done + 1)
                 hypothesis = mission['hypotheses'][min(index - 1, mission['cap'] - 1)]
                 self.log(f'stage {index} {hypothesis["name"]}: finished, recording'
                          + (' after restart' if (self.root / f'results/result-{index:03}.json').exists() else ''))
