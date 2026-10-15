@@ -238,3 +238,41 @@ the kawaii sprite really has two stray pixels, the braid render really has a gre
 head, the blue bob really has a drawn frame, and the maid render really is cropped with a dark edge
 patch. Two detector rules were also wrong and were replaced: the thin-stroke frame test could not
 separate a frame from a large blob, and the alpha-based sprite test misfiled an opaque 768 render.
+
+## Banner contract (2026-10-16, requested by the term-chan rendering session)
+
+The product direction changed: the showcase asset is a **wide banner**, not a square portrait. Recorded
+here because it changes the asset contract, and measured before any training was queued.
+
+### Geometry, measured from the term-chan renderer
+
+`spriteToLines` packs two pixel rows into one text row and one pixel column into one cell, so a sprite of
+`W x H` occupies **W terminal columns and H/2 rows**. Therefore the terminal-native banner is:
+
+| native sprite | occupies | ratio |
+|---|---|---|
+| 96 x 32 | 96 columns x 16 rows | 3:1 |
+| 64 x 32 | 64 columns x 16 rows | 2:1, leaves 32 columns for the speech bubble |
+
+`src/sprites/loader.js` already accepts any positive `[width, height]`, so no format rewrite is needed.
+Haremizer's own validators are the blocker: `images.validate_png` accepts only 48/64 and
+`sprite_export` validates through it. Widening those is a deliberate contract change, not a side effect.
+
+### Probe evidence (960x320 and 1024x512, base model, no adapter)
+
+| render | result |
+|---|---|
+| 960x320, 3:1 | scenery is coherent, but the character collapses to an unreadable speck in the middle distance |
+| 1024x512, 2:1 | readable full-body character inside a real scene: night office, desks, monitors, shelves, windows |
+| 1024x512, 2:1, asked for "standing on the right, empty space on the left" | model still centred the character |
+
+So 3:1 in one shot is out. The working path is: render at 2:1, crop a 960x320 window, then **exact 10x BOX
+downscale** to the 96x32 native banner. Assets: `artifacts/banner-probe-01/`. Off-centre composition is
+not reliable from the prompt, so the character belongs to one side either by selecting seeds until the
+model complies, or by compositing a separately rendered and keyed character onto a scenery render.
+
+### Still to decide with the term-chan session
+
+Which side the art occupies relative to the speech bubble, whether the banner keeps transparency or is a
+full-bleed scene, the fallback for narrow panes, and whether the README shows the raw banner or a live
+capture of the horizontal layout.
