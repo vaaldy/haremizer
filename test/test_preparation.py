@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 import sys
 import tempfile
 import unittest
@@ -17,7 +19,7 @@ except ImportError:
     Image = None
 
 
-SUITE = Path(__file__).with_name("evaluation-suite.json")
+SUITE = ROOT / "evaluation-suite.json"
 
 
 class RuntimeTests(unittest.TestCase):

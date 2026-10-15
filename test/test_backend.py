@@ -1,6 +1,8 @@
 import json
 import os
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 import signal
 import subprocess
 import sys
@@ -46,7 +48,7 @@ class BackendTests(unittest.TestCase):
                 "license": "test only", "training_allowed" if split == "train" else "evaluation_allowed": True})
         (self.root / "rights.json").write_text(json.dumps(rights))
         self.suite = self.root / "suite.json"
-        self.suite.write_bytes(Path(__file__).with_name("evaluation-suite.json").read_bytes())
+        self.suite.write_bytes((ROOT / "evaluation-suite.json").read_bytes())
         self.model = self.root / "model"
         self.model.mkdir()
         (self.model / "model_index.json").write_text(json.dumps({"_class_name": "StableDiffusionPipeline", "unet": ["diffusers", "UNet2DConditionModel"]}))

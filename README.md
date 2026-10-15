@@ -380,7 +380,7 @@ current user authorization policy for future reviewed training implementations.
   fixed seeds, plus instructions for **independently composed** 48 and 64 layouts.
   These are descriptors, not generated samples or proof of visual diversity.
 - `core.py`: the existing GPU-independent experiment orchestration harness with
-  injected `Trainer`/`Reviewer` interfaces. `test_core.py` uses fake checkpoint
+  injected `Trainer`/`Reviewer` interfaces. `test/test_core.py` uses fake checkpoint
   files and fake reviews only. Its approval/ready state is a harness setup gate,
   **not authorization for real training**.
 
@@ -419,7 +419,7 @@ python -B refinement_loop.py status /absolute/run
 python -B refinement_loop.py review /absolute/run /absolute/review.json
 # Explicit validation-only pass; no optimizer/training:
 python -B refinement_loop.py validate-existing /absolute/run /absolute/weights.safetensors /absolute/outcome.json
-PYTHONDONTWRITEBYTECODE=1 python -B -m unittest -v test_refinement_loop
+PYTHONDONTWRITEBYTECODE=1 python -B -m unittest -v test.test_refinement_loop
 ```
 
 Plan JSON fields (no implicit defaults):
@@ -547,6 +547,7 @@ inside the ignored `/test/` directory. No ML dependencies, network, or TTY neede
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python -m unittest -v
+# all tests live in test/; discovery from the repository root finds them
 python images.py validate /path/to/portrait.png --size 48
 python images.py sheet /path/to/a.png /path/to/b.png \
   --output artifacts/contact-sheet.png --scale 4 --columns 2
@@ -645,9 +646,9 @@ Missing blink/talk frames use the parent's base fallback; no fake animation is a
 ```sh
 python sprite_export.py --base /local/portraits/base.png \
   --blink /local/blink-frame/blink.png --output /local/characters/new-character
-PYTHONDONTWRITEBYTECODE=1 python -m unittest -v test_sprite_export
+PYTHONDONTWRITEBYTECODE=1 python -m unittest -v test.test_sprite_export
 # Optional pure Node integration; no TTY or parent writes:
-PYTHONDONTWRITEBYTECODE=1 TERM_CHAN_LOADER_TEST=1 python -m unittest -v test_sprite_export
+PYTHONDONTWRITEBYTECODE=1 TERM_CHAN_LOADER_TEST=1 python -m unittest -v test.test_sprite_export
 ```
 
 The character directory must be new and outside input image directories; it
@@ -777,11 +778,11 @@ Parent/coordinator must wrap the entire process in a **900-second timeout**:
 timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
   /home/valdy/.cache/haremizer-runtime/bin/python smoke_sdxl.py \
   --request artifacts/sdxl-smoke-request.json --output artifacts/sdxl-smoke-01
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_sdxl_smoke
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test.test_sdxl_smoke
 # Optional CPU-only real save/delete/reload API check, not a model/GPU smoke:
 PYTHONDONTWRITEBYTECODE=1 SDXL_SMOKE_CPU_API_TEST=1 \
   /home/valdy/.cache/haremizer-runtime/bin/python -m unittest -v \
-  test_sdxl_smoke.SmokePreflightTests.test_real_diffusers_save_delete_reload_cpu
+  test.test_sdxl_smoke.SmokePreflightTests.test_real_diffusers_save_delete_reload_cpu
 ```
 
 ### Explicit experimental style-learning pilot
@@ -1151,7 +1152,7 @@ container above from production adapter use. Supply local `request.json`:
 
 ```sh
 python backend.py /absolute/path/request.json > /absolute/path/preview.json
-PYTHONDONTWRITEBYTECODE=1 python -m unittest -v test_backend
+PYTHONDONTWRITEBYTECODE=1 python -m unittest -v test.test_backend
 ```
 
 The script contract is a **human source review declaration**, not an automatic

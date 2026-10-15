@@ -4,6 +4,8 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 import shutil
 import subprocess
 import sys
@@ -180,7 +182,7 @@ class SpriteExportTests(unittest.TestCase):
         self.make_png(self.blink, colors=[(61, 20, 30), (0, 20, 30)])
         for with_blink in (False, True):
             output = self.root / f"cli-{with_blink}"
-            command = [sys.executable, str(Path(__file__).with_name("sprite_export.py")),
+            command = [sys.executable, str(ROOT / "sprite_export.py"),
                        "--base", str(self.base), "--output", str(output)]
             if with_blink:
                 command += ["--blink", str(self.blink), "--provenance", str(self.root / "cli.json")]
@@ -193,7 +195,7 @@ class SpriteExportTests(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("TERM_CHAN_LOADER_TEST") == "1" and shutil.which("node"),
                          "optional read-only parent Node integration")
     def test_parent_loader_and_renderer(self):
-        parent = Path(__file__).resolve().parent.parent
+        parent = ROOT.parent
         loader = parent / "src" / "sprites" / "loader.js"
         renderer = parent / "src" / "render" / "sprite.js"
         if not loader.is_file() or not renderer.is_file():

@@ -3,6 +3,8 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 import subprocess
 import sys
 import tempfile
@@ -168,7 +170,7 @@ class BlinkTests(unittest.TestCase):
 
     def test_cli(self):
         self.write_annotation()
-        command = [sys.executable, str(Path(__file__).with_name("blink.py"))]
+        command = [sys.executable, str(ROOT / "blink.py")]
         help_result = subprocess.run(command + ["--help"], capture_output=True, text=True)
         self.assertEqual(help_result.returncode, 0, help_result.stderr)
         result = subprocess.run(command + ["--source", str(self.source), "--annotation",

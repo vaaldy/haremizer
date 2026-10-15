@@ -3,6 +3,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 import subprocess
 import sys
 import tempfile
@@ -14,7 +16,7 @@ from PIL import Image
 
 import sample
 
-SUITE = Path(__file__).with_name("evaluation-suite.json")
+SUITE = ROOT / "evaluation-suite.json"
 
 
 class EulerDiscreteScheduler:
@@ -416,7 +418,7 @@ sys.argv = ['sample.py', '--help']
 runpy.run_path('sample.py', run_name='__main__')
 """
         result = subprocess.run([sys.executable, "-B", "-c", code],
-                                cwd=Path(__file__).parent, capture_output=True, text=True, timeout=10)
+                                cwd=ROOT, capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--scheduler", result.stdout)
         self.assertIn("--cpu-offload", result.stdout)
