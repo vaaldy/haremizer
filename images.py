@@ -15,7 +15,15 @@ def pillow():
     return Image
 
 
-def validate_png(path: Path, sizes: tuple[int, ...] = (48, 64)) -> dict:
+BANNER_SIZES = ((128, 48), (96, 32), (64, 32))
+
+
+def validate_png(path: Path, sizes: tuple[int, ...] = (48, 64), allow_banners: bool = False) -> dict:
+    """Validate one PNG against the sprite contract.
+
+    Square portrait sprites keep the original 48/64 rule. Banners are non-square and are only accepted
+    when `allow_banners` is passed, so nothing silently loosens the portrait contract.
+    """
     Image = pillow()
     if not sizes or any(size not in (48, 64) for size in sizes):
         raise ValueError("allowed PNG sizes must be 48 and/or 64")
@@ -23,8 +31,13 @@ def validate_png(path: Path, sizes: tuple[int, ...] = (48, 64)) -> dict:
         with Image.open(path) as image:
             if image.format != "PNG" or getattr(image, "n_frames", 1) != 1:
                 raise ValueError("expected a single-frame PNG")
-            if image.width != image.height or image.width not in sizes:
-                raise ValueError(f"expected square PNG of size {sizes}")
+            if image.width == image.height:
+                if image.width not in sizes:
+                    raise ValueError(f"expected square PNG of size {sizes}")
+            elif not allow_banners:
+                raise ValueError(f"expected square PNG of size {sizes}; banners need allow_banners")
+            elif (image.width, image.height) not in BANNER_SIZES:
+                raise ValueError(f"banner size must be one of {BANNER_SIZES}")
             image.verify()
         with Image.open(path) as image:
             image.load()

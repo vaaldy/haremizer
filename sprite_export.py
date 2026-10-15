@@ -21,7 +21,7 @@ def _snapshot(path: Path) -> tuple[bytes, dict, list[tuple]]:
         raw = source.read(MAX_INPUT_BYTES + 1)
     if len(raw) > MAX_INPUT_BYTES:
         raise ValueError("input PNG exceeds 16 MiB")
-    metrics = validate_png(BytesIO(raw))
+    metrics = validate_png(BytesIO(raw), allow_banners=True)
     with pillow().open(BytesIO(raw)) as image:
         pixels = list(image.convert("RGBA").getdata())
     return raw, metrics, pixels

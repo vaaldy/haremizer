@@ -38,7 +38,7 @@ def blink(source, annotation, output):
     source_hash = hashlib.sha256(raw).hexdigest()
     if declaration["source_sha256"] != source_hash:
         raise ValueError("source_sha256 must match the full source byte SHA256")
-    source_metrics = validate_png(BytesIO(raw))
+    source_metrics = validate_png(BytesIO(raw), allow_banners=True)
     Image = pillow()
     with Image.open(BytesIO(raw)) as image:
         rgba = image.convert("RGBA")
@@ -94,7 +94,7 @@ def blink(source, annotation, output):
     (output / "annotation.json").write_bytes(annotation_bytes)
     destination = output / "blink.png"
     rgba.save(destination, format="PNG")
-    metrics = validate_png(destination, (width,))
+    metrics = validate_png(destination, (width,), allow_banners=True)
     with Image.open(destination) as image:
         result = list(image.convert("RGBA").getdata())
     outside_unchanged = all(before == after for index, (before, after) in

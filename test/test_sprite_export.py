@@ -165,10 +165,10 @@ class SpriteExportTests(unittest.TestCase):
         raw = self.base.read_bytes()
         original_validate = validate_png
 
-        def validate_snapshot(stream):
+        def validate_snapshot(stream, **kwargs):
             self.assertIsInstance(stream, BytesIO)
             self.assertEqual(stream.getvalue(), raw)
-            metrics = original_validate(stream)
+            metrics = original_validate(stream, **kwargs)
             # Source mutation after snapshot must not change encoding or byte hash.
             self.base.write_bytes(b"changed after snapshot")
             return metrics
