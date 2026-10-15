@@ -200,3 +200,41 @@ Recorded after the aesthetic revision:
 
 Still open: robustness across seeds and descriptors, a pose with both eyes visible, and native
 transparency rather than a colour key.
+
+## Defect detector contract (2026-10-15)
+
+Goal: detect defect classes in a render or a sprite and emit masks, **without repairing anything**.
+The fixer is a separate future decision; this exists so a repair can be aimed and checked.
+
+Classes:
+
+| class | meaning | how it is measured |
+|---|---|---|
+| `stray_thin_lines` | detached strokes left by the generator or a colour key | non-silhouette component at most 2 px thick and at least 8 px long |
+| `specks` | isolated single pixels | non-silhouette component smaller than 4 px |
+| `backdrop_residue` | leftover backdrop patches | component whose pixels are at least 80 percent within tolerance of the modal non-silhouette colour |
+| `border_contact` | head likely cropped | silhouette reaching rows 0-1, or a render component of at least 2 percent of the frame |
+| `busy_background` | frame, panel or scenery | border not dominated by one colour, or at least 8 dark full-span lines at render resolution |
+| `empty_alpha` | subject missing | more than 90 percent transparent |
+| `format` | unusable as a term-chan sprite | size not 64, more than 62 opaque colours, or soft alpha |
+
+Bounds and rules:
+
+- Read-only. The detector opens the input and writes a JSON report plus one mask PNG per class. It never
+  edits the input; a test asserts the input bytes are unchanged.
+- Deterministic. Same input, same report structure; the report carries the input SHA256.
+- Mode by measurement: a small image with a transparent pixel is a sprite, everything else is a render.
+- **Not implemented on purpose:** colour-class checks inside the face, such as the red eyebrow the user
+  objected to. Locating that region reliably is unsolved, and a wrong box would produce confident
+  nonsense. It needs a declared face box or a trained segmenter first.
+
+Acceptance: the eight-item labelled corpus in `runs/detector-20261015/corpus.json` must be reproduced
+exactly, with no false positive on a clean item. Current result: eight of eight exact, precision 1.0,
+recall 1.0, from `runs/detector-20261015/score-final.json`.
+
+Honest history: five loop iterations. My own first labels were wrong five times and the measurements
+corrected them, not the other way round: the rado gala and kawaii sprites really do lack top clearance,
+the kawaii sprite really has two stray pixels, the braid render really has a grey panel plus a cropped
+head, the blue bob really has a drawn frame, and the maid render really is cropped with a dark edge
+patch. Two detector rules were also wrong and were replaced: the thin-stroke frame test could not
+separate a frame from a large blob, and the alpha-based sprite test misfiled an opaque 768 render.
