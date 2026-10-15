@@ -271,6 +271,21 @@ downscale** to the 96x32 native banner. Assets: `artifacts/banner-probe-01/`. Of
 not reliable from the prompt, so the character belongs to one side either by selecting seeds until the
 model complies, or by compositing a separately rendered and keyed character onto a scenery render.
 
+### Status of the banner work — clarified 2026-10-16
+
+**The wide room-scene banner is NOT the user-approved final target.** The user clarified that the request
+was about *presenting* the existing Nadeshiko sprite (a screenshot beside commentary, black terminal
+background, cleaner tsundere quip) — a README/layout matter, not a change to the generator's output goals.
+The 128x48 room-scene composite and its blink are therefore kept as **experiments/artefacts only**.
+
+Consequences recorded here so this does not drift:
+
+- No further banner-specific generation or training without explicit user direction.
+- The portrait pipeline (48/64 square native sprites) remains the project's actual goal.
+- The banner contract in `images.validate_png` stays, scoped behind `allow_banners`, because it is tested
+  and harmless, but it does not change what the generator is for.
+- The blink artefact stays valid as an experiment; it was not merged anywhere.
+
 ### Still to decide with the term-chan session
 
 Which side the art occupies relative to the speech bubble, whether the banner keeps transparency or is a
