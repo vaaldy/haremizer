@@ -165,7 +165,7 @@ def build(run, output, columns=8, cell=176, max_pages=None):
     (output / 'legend.json').write_text(json.dumps(legend, indent=2) + '\n')
     (output / 'regenerate.sh').write_text(
         f'#!/bin/sh\ncd {Path(__file__).resolve().parent}\n'
-        f'exec /home/valdy/.cache/haremizer-runtime/bin/python -B matrix.py --run {run} '
+        f'exec python3 -B matrix.py --run {run} '
         f'--output {output} --columns {columns}\n')
     (output / 'regenerate.sh').chmod(0o755)
     return legend

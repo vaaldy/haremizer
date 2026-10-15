@@ -1,6 +1,14 @@
+# runtime and environment
 /.venv/
 __pycache__/
-/artifacts/
+
+# never published: datasets, model files, training runs, nested repositories
 /data/
 /models/
 /runs/
+/prompts/
+
+# artifacts: only the sprite deliverables are published, never the internal working files
+/artifacts/*
+!/artifacts/sprites/
+/artifacts/sprites/*/internal/

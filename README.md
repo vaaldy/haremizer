@@ -529,7 +529,7 @@ the separate two-step SDXL smoke below did. This is
 an unsupported compatibility workaround, not proof of complete training stability.
 No global environment or system-package changes were made.
 
-The isolated environment is `/home/valdy/.cache/haremizer-runtime`; observed
+The isolated environment is a local virtual environment, here `$HAREMIZER_PY` (originally a uv-managed venv under the user cache); observed
 native/override evidence lives in ignored `artifacts/archive/runtime-native.json` and
 `artifacts/archive/runtime-override.json`. A bounded Ubuntu 24.04 container diagnostic using the same mounted host
 PyTorch 2.11 + ROCm 7.2 libraries mirrored the host: native primitive probe
@@ -776,12 +776,12 @@ Parent/coordinator must wrap the entire process in a **900-second timeout**:
 
 ```sh
 timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
-  /home/valdy/.cache/haremizer-runtime/bin/python smoke_sdxl.py \
+  python smoke_sdxl.py \
   --request artifacts/archive/sdxl-smoke-request.json --output artifacts/archive/sdxl-smoke-01
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test.test_sdxl_smoke
 # Optional CPU-only real save/delete/reload API check, not a model/GPU smoke:
 PYTHONDONTWRITEBYTECODE=1 SDXL_SMOKE_CPU_API_TEST=1 \
-  /home/valdy/.cache/haremizer-runtime/bin/python -m unittest -v \
+  python -m unittest -v \
   test.test_sdxl_smoke.SmokePreflightTests.test_real_diffusers_save_delete_reload_cpu
 ```
 
@@ -831,7 +831,7 @@ Parent/coordinator must bound any separately justified future pilot to 900 secon
 
 ```sh
 timeout --signal=KILL 900s env HSA_OVERRIDE_GFX_VERSION=10.3.0 \
-  /home/valdy/.cache/haremizer-runtime/bin/python smoke_sdxl.py --pilot \
+  python smoke_sdxl.py --pilot \
   --request artifacts/archive/style-pilot-request-01.json --output artifacts/archive/style-pilot-01
 ```
 
