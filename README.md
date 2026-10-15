@@ -40,6 +40,15 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- **User accepted stage 6 `bold-prior03`** (`b74277b334d84f3ef2d81d41b58bea6de6c0303c4e5ee503b44957f979a8d93f`),
+  preserved at `artifacts/user-accepted/`. The deterministic gate had rejected it (isolated share 0.4425
+  versus 0.2792 baseline; ink 472 above the 60-450 range) and the machine read agrees it adds speckle with
+  the bolder ink. User acceptance settles the look, not robustness: novel-descriptor and new-seed checks,
+  alpha, blink and export are still open.
+- **Comparison matrix** in `artifacts/overnight-matrix/`: eight columns per page, column 1 always the
+  original no-LoRA render, later columns the training stages, native-64 under each 768 render, refreshed
+  every five minutes while the window is open.
+
 - **Batch 1 closed with zero promotions.** All 18 declared stages were rejected: ink rose 239 -> 757
   pixels while the isolated-pixel share stayed above the 0.279 baseline and left the 60-450 goal range.
   The token-carrying no-LoRA baseline remains the incumbent. Best scores were stage 17 `bold-qkfreeze-lr`

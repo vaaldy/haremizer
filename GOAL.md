@@ -135,3 +135,21 @@ the remaining work moves to inference-side control and the deterministic 64px le
 Comparison matrix for review: `artifacts/overnight-matrix/page-NN.png`, regenerated every five minutes
 while the window is open. Column 1 of every page is the original no-LoRA render, later columns are the
 training stages, and the native-64 rendition sits under each 768 render.
+
+### User acceptance 2026-10-15
+
+On seeing the comparison matrix the user accepted **stage 6 `bold-prior03`** ("i pretty much accept").
+Checkpoint `b74277b334d84f3ef2d81d41b58bea6de6c0303c4e5ee503b44957f979a8d93f`, preserved at
+`artifacts/user-accepted/stage-006-bold-prior03.safetensors` with its configuration and metrics in the
+sidecar JSON.
+
+Recorded honestly: the deterministic gate **rejected** this stage (isolated share 0.4425 against the
+0.2792 baseline, ink 472 above the agreed 60-450 range), and the machine visual read agrees that it adds
+speckle alongside the bolder ink. The user is the authority on taste, so it is now the accepted style
+candidate for the remaining deliverables, but that acceptance is **not** robustness validation and not a
+full-deliverable promotion. It still has to pass the frozen novel-descriptor and new-seed checks, and the
+alpha, blink and term-chan export gates are untouched.
+
+Queued automatically once the training window closes: a four-case novel-descriptor run with this
+checkpoint (`novel-006.json`, never trained on) and one real cyan-hair subject rendered through the
+hash-pinned LayerDiffuse route for RGBA.
