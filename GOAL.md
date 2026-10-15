@@ -116,3 +116,22 @@ cannot create ink the sources do not contain. Bold-ink CC-BY-4.0 native-64 sourc
 `pebonius` and unused: 15 now form `data/curation-bold-ink-06`. Separately, adding the shared style
 tokens to the evaluation prompts alone raised the matched baseline from ink 125.6 to 239.1 pixels and
 the largest connected stroke from 41.4 to 101.9 before any training.
+
+### Cap revision 2026-10-14T21:00Z
+
+Batch 1 completed all eighteen declared stages. **Every one was rejected.** Ink rose from the matched
+baseline's 239 pixels to 757 while the isolated-pixel share never returned to the baseline 0.279, and
+from stage 4 on the ink left the contracted 60–450 range. The best scores still failed on isolation
+(stage 17 `bold-qkfreeze-lr` 0.4645, stage 18 `bold-prior005-2` 0.4336). The no-LoRA baseline that
+carries the shared style tokens stayed the incumbent throughout, so nothing was promoted.
+
+A second batch was recorded before any compute: the cap moves **18 → 24** stages, same ten-hour
+deadline, same storage ceiling, one GPU job at a time, no history reset. Batch 2 is a six-stage
+**closure test** of the LoRA route at the smallest perturbation the code allows (learning rate 1e-5,
+50 steps) with dropout, prior, query/key freeze and Min-SNR varied one at a time. If a gentle adapter
+still adds speckle rather than clean strokes, the LoRA route is closed on this data and objective, and
+the remaining work moves to inference-side control and the deterministic 64px legibility check.
+
+Comparison matrix for review: `artifacts/overnight-matrix/page-NN.png`, regenerated every five minutes
+while the window is open. Column 1 of every page is the original no-LoRA render, later columns are the
+training stages, and the native-64 rendition sits under each 768 render.

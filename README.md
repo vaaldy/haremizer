@@ -40,6 +40,17 @@ Training completion and PNG format checks are not quality acceptance.
 
 ### Latest reviewed outcomes
 
+- **Batch 1 closed with zero promotions.** All 18 declared stages were rejected: ink rose 239 -> 757
+  pixels while the isolated-pixel share stayed above the 0.279 baseline and left the 60-450 goal range.
+  The token-carrying no-LoRA baseline remains the incumbent. Best scores were stage 17 `bold-qkfreeze-lr`
+  0.4645 and stage 18 `bold-prior005-2` 0.4336, both rejected on isolation.
+- **Comparison matrix:** `matrix.py` writes `artifacts/overnight-matrix/page-NN.png` with at most eight
+  columns per page. Column 1 is always the original no-LoRA render, later columns are training stages, and
+  the native-64 rendition sits under every 768 render. A tmux job regenerates it every five minutes.
+- **Batch 2 recorded before compute:** cap 18 -> 24 stages, same deadline and storage ceiling, six stages at
+  the smallest allowed perturbation (LR 1e-5, 50 steps) varying dropout, prior, query/key freeze and Min-SNR.
+  This is a closure test of the LoRA route, not an expectation of promotion.
+
 - **Unattended overnight window** (`auto_loop.py`, `score_sprite.py`, `ink_stats.py`, contract in
   `runs/overnight-20261013/goal.json`, rewritten into `GOAL.md`): 18 predeclared single-variable
   hypotheses, at most 8 stages per coordinator directory, one GPU job at a time, deterministic scoring
