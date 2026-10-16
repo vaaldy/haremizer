@@ -1,5 +1,20 @@
 # haremizer
 
+### Optional isolated hair-tip rig (CPU)
+
+`hair_motion.py` provides `plan_hair` / `render_frame` for explicitly annotated,
+source-hash-bound isolated tips over a known transparent-black backplate. This is
+an integer-rasterized 2D kinematic control, **not** hair detection, diffusion motion,
+or wind physics. Row weight runs from an anchored root to the tip; periodic signed
+horizontal displacement is limited to two native pixels. Source/destination masks
+must fit the canvas and avoid protected opaque content. Every other opaque pixel
+must be protected. RGBA outside the declared envelope remains exact; **alpha inside
+it intentionally moves**. Zero amplitude and period endpoints reproduce the source.
+Unknown occluded skin/scenery cannot be reconstructed: refuse those inputs rather
+than treating arbitrary bangs as an isolated layer. Native PNG frames are the
+preservation authority; any matted GIF must be labeled presentation-only and its
+reopened frames checked. This optional rig is not sprite/model quality promotion.
+
 Text-described anime pixel-art portraits: an independent repository inside
 term-chan. **Current milestone: real SDXL training/inference testbed, annotated
 localized blink, and independently verified sprite JSON export. The 100-step
