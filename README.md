@@ -1301,3 +1301,28 @@ Rules the tools enforce or assume:
 - `sprite_png.py` renders any sprite JSON frame to PNG and is how the `neutral-*.png` files are produced.
 - `tidy.py` performed the one-time reorganisation and writes `MOVES.md`; historical manifests and
   provenance files still name the old paths, so use that table to trace them.
+
+### Optional source-bound blink planning
+
+`edit_plan.py --source source.png --annotation eyes.json --fraction 0.125` prints a
+native-pixel permission plan without loading torch/diffusers. This is an external
+annotation seam, **not an eye detector or guaranteed geometric generation control**.
+Annotations have `version: 1`, the full PNG `source_sha256`, a truthful `provider`,
+and one or two `eyes`. Each eye supplies `status: "confirmed"`, `confidence: 1`,
+`rect` and a nonempty `safe_regions` list of `{x,y,width,height}` rectangles.
+Missing/occluded/uncertain eyes abstain; confidence is a provider declaration, not
+calibrated detection accuracy. Explicitly annotate an occluded eye rather than
+silently omitting it. A single visible-eye subject may declare one eye.
+
+`plan_blink(source_bytes, annotation, fraction)` uses `round(fraction*eye_height)`
+(Python ties-to-even), with finite fractions in [0,1]. The mask is old-eye union
+translated-target, restricted to separately permitted opaque eye/skin pixels.
+Clipped targets and overlapping envelopes reject; zero offset keeps the old mask.
+No hair/background permission is inferred. `lock_candidate` maps only model RGB
+inside that envelope to the source palette and copies all other RGBA exactly.
+`validate_candidate` independently checks dimensions, outside RGBA, whole alpha,
+source palette and the 62-opaque-color ceiling. Reopen saved RGBA files and validate
+again. A no-op is reported, not called placement success; even changed pixels and
+zero drift do not establish blink quality or observed lid displacement. Existing
+`blink.py` behavior is unchanged. Per-image pilot annotations/evidence live in run
+artifacts, never as production coordinate/color defaults.
