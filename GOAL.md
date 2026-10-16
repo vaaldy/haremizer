@@ -37,6 +37,18 @@ Transparency remains mandatory. The user explicitly approved the current look an
 4. Record per-case proportions, visibility/contrast, adherence, artifacts and uncertainty. Compare against the unloaded baseline and the strongest retained unpromoted checkpoint. A material regression blocks promotion.
 5. Training completion, finite gradients, exact reload, a lower loss, CPU tests, one nice portrait or a valid alpha channel do **not** establish model quality. Preserve failed evidence and rollback weights.
 
+### Review policy, clarified 2026-10-16
+
+The user explicitly replaced human art review with a **dedicated independent image reviewer**. Visual
+judgements are therefore autonomous machine verdicts — accept, reject, or uncertain — and are not deferred
+to the user, and not a human-signed opinion.
+
+- `UNCERTAIN` abstains. It is not a soft accept and not a request for human input.
+- No new compute after a declared window closes; a closed loop stays closed.
+- A visual judgement is separate from a correctness commit: the mechanism can land while its look stays
+  rejected or uncertain, and neither case may be described as a finished feature.
+- Nothing is promoted to a default sprite pack or the model on the strength of a visual verdict alone.
+
 ## Improvement loop
 
 One writer and one GPU job at a time. Parent owns decisions, source fixes, visual gates and final acceptance.
