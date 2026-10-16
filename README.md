@@ -1326,3 +1326,19 @@ again. A no-op is reported, not called placement success; even changed pixels an
 zero drift do not establish blink quality or observed lid displacement. Existing
 `blink.py` behavior is unchanged. Per-image pilot annotations/evidence live in run
 artifacts, never as production coordinate/color defaults.
+
+`plan_expression(source_bytes, annotation, operation)` supports `blink`, `happy`
+and `surprised` with native boolean set-union permissions. Expression annotations
+supply `version: 1`, exact `source_sha256`, `size: [width,height]`, truthful
+`provider`, and `regions`: each has a unique `label`, a `role` (`eyes`, `brows`,
+`mouth`), `status: "confirmed"`, `confidence: 1`, and an integer `rect` as above.
+Blink permits eyes only; happy/surprised require eyes and mouth, with optional
+explicit brows. Every supplied region must be confirmed, opaque, in bounds and
+nonoverlapping. Missing/uncertain/occluded regions abstain; malformed labels or unknown roles
+reject. Semantic roles are trusted per-image proposals, not automatic detection;
+never label whole-face/hair/background rectangles as features. Obscured brows may
+be omitted, not guessed. Shared locking/validation preserves the source palette,
+whole alpha and exact outside RGBA. `expression_verified: false` stays false even
+for changed candidates: no-op/locality counts cannot prove expression or identity
+quality. Run-local candidates require independent image review, not promotion by
+the producer.

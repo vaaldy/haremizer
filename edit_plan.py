@@ -1,4 +1,4 @@
-"""Source-bound blink envelopes, not eye detection or guaranteed lid placement."""
+"""Source-bound edit permissions, not detection or guaranteed semantic generation."""
 from __future__ import annotations
 
 import argparse
@@ -107,20 +107,96 @@ def plan_blink(source: bytes, annotation: dict, fraction: float) -> BlinkPlan:
                      frozenset(safe), frozenset(mask))
 
 
+@dataclass(frozen=True)
+class ExpressionPlan:
+    source_sha256: str
+    size: tuple
+    operation: str
+    regions: tuple
+    mask: frozenset
+
+
+def _expression_mask(operation, regions, size):
+    if operation not in ("blink", "happy", "surprised"):
+        raise ValueError("unsupported expression operation")
+    allowed = {"eyes"} if operation == "blink" else {"eyes", "brows", "mouth"}
+    required = {"eyes"} if operation == "blink" else {"eyes", "mouth"}
+    labels, roles, mask = set(), set(), set()
+    for label, role, rect in regions:
+        if not isinstance(label, str) or not label.strip() or label in labels:
+            raise ValueError("region labels must be nonempty and unique")
+        if not isinstance(role, str) or role not in allowed:
+            raise ValueError("region role not permitted for operation")
+        checked = _rect(dict(zip(("x", "y", "width", "height"), rect)), size)
+        if len(rect) != 4:
+            raise ValueError("invalid region rectangle")
+        pixels = _pixels(checked)
+        if mask & pixels:
+            raise ValueError("overlapping expression regions")
+        labels.add(label)
+        roles.add(role)
+        mask.update(pixels)
+    if not required <= roles:
+        raise Abstention("declared eyes and, for expressions, mouth required")
+    return frozenset(mask)
+
+
+def plan_expression(source: bytes, annotation: dict, operation: str) -> ExpressionPlan:
+    """Union explicit semantic regions; brows are optional, never inferred.
+
+    Role labels and confidence are trusted provider declarations, not segmentation
+    evidence. Every supplied region must be confirmed; none is silently dropped.
+    """
+    image = _image(source)
+    digest = hashlib.sha256(source).hexdigest()
+    if (not isinstance(annotation, dict) or set(annotation) != {
+            "version", "source_sha256", "size", "provider", "regions"} or
+            type(annotation["version"]) is not int or annotation["version"] != 1 or
+            not isinstance(annotation["provider"], str) or not annotation["provider"].strip()):
+        raise ValueError("invalid source-bound expression annotation")
+    if annotation["source_sha256"] != digest:
+        raise ValueError("source hash mismatch")
+    if (not isinstance(annotation["size"], list) or len(annotation["size"]) != 2 or
+            any(type(n) is not int for n in annotation["size"]) or
+            tuple(annotation["size"]) != image.size):
+        raise ValueError("source dimensions mismatch")
+    if not isinstance(annotation["regions"], list):
+        raise ValueError("regions must be a list")
+    regions = []
+    for entry in annotation["regions"]:
+        if not isinstance(entry, dict) or set(entry) != {"label", "role", "status", "confidence", "rect"}:
+            raise ValueError("invalid semantic region")
+        confidence = entry["confidence"]
+        if type(confidence) not in (int, float) or not 0 <= confidence <= 1 or not math.isfinite(confidence):
+            raise ValueError("confidence must be finite in [0,1]")
+        if entry["status"] != "confirmed" or confidence != 1:
+            raise Abstention("uncertain, missing or occluded feature")
+        regions.append((entry["label"], entry["role"], _rect(entry["rect"], image.size)))
+    mask = _expression_mask(operation, regions, image.size)
+    if any(image.getpixel(p)[3] != 255 for p in mask):
+        raise Abstention("expression regions must be opaque")
+    return ExpressionPlan(digest, image.size, operation, tuple(regions), mask)
+
+
 def _checked_source(source, plan):
     image = _image(source)
     if hashlib.sha256(source).hexdigest() != plan.source_sha256 or image.size != plan.size:
         raise ValueError("source hash or dimensions mismatch")
-    expected = frozenset().union(*(_pixels(r) for r in (*plan.eyes, *plan.targets)))
-    if (plan.mask != expected or not plan.mask <= plan.safe or
+    if isinstance(plan, ExpressionPlan):
+        expected = _expression_mask(plan.operation, plan.regions, image.size)
+        safe = expected
+    else:
+        expected = frozenset().union(*(_pixels(r) for r in (*plan.eyes, *plan.targets)))
+        safe = plan.safe
+    if (plan.mask != expected or not plan.mask <= safe or
             any(not (0 <= x < image.width and 0 <= y < image.height) or
                 image.getpixel((x, y))[3] != 255 for x, y in plan.mask)):
         raise ValueError("plan mask escapes geometry, safe domain or opaque image")
     return image
 
 
-def validate_candidate(source: bytes, plan: BlinkPlan, candidate) -> dict:
-    """Check preservation only; changed pixels are NOT evidence of lid placement."""
+def validate_candidate(source: bytes, plan: BlinkPlan | ExpressionPlan, candidate) -> dict:
+    """Check preservation only; changed pixels do not prove the requested operation."""
     image = _checked_source(source, plan)
     if candidate.mode != "RGBA" or candidate.size != image.size:
         raise ValueError("candidate must be same-size RGBA")
@@ -139,12 +215,13 @@ def validate_candidate(source: bytes, plan: BlinkPlan, candidate) -> dict:
             colors.add(after[:3])
     if not colors <= palette or len(colors) > 62:
         raise ValueError("source palette violation or >62 opaque colors")
-    return {"changed_pixels": changed, "no_op": changed == 0,
+    return {**({"expression_verified": False} if isinstance(plan, ExpressionPlan) else {}),
+            "changed_pixels": changed, "no_op": changed == 0,
             "outside_rgba_changes": 0, "alpha_changes": 0,
             "opaque_colors": len(colors), "placement_verified": False}
 
 
-def lock_candidate(source: bytes, plan: BlinkPlan, proposal):
+def lock_candidate(source: bytes, plan: BlinkPlan | ExpressionPlan, proposal):
     """Composite palette-mapped model RGB only within the planned envelope."""
     image = _checked_source(source, plan)
     if proposal.mode not in ("RGB", "RGBA") or proposal.size != image.size:

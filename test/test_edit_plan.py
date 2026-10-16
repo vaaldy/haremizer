@@ -7,7 +7,7 @@ import subprocess
 import sys
 import unittest
 
-from edit_plan import Abstention, plan_blink, lock_candidate, validate_candidate
+from edit_plan import Abstention, plan_blink, plan_expression, lock_candidate, validate_candidate
 from images import pillow
 
 
@@ -138,6 +138,109 @@ class EditPlanTests(unittest.TestCase):
         self.annotation["source_sha256"] = hashlib.sha256(self.raw).hexdigest()
         with self.assertRaises(ValueError):
             validate_candidate(self.raw, self.plan(), self.image)
+
+    def expression_annotation(self):
+        return {"version": 1, "provider": "synthetic independent of Mint",
+                "source_sha256": hashlib.sha256(self.raw).hexdigest(), "size": [32, 32],
+                "regions": [self.region("left", "eyes", 3, 4),
+                            self.region("right", "eyes", 20, 12),
+                            self.region("smile", "mouth", 12, 24)]}
+
+    def region(self, label, role, x, y):
+        return {"label": label, "role": role, "status": "confirmed", "confidence": 1,
+                "rect": {"x": x, "y": y, "width": 3, "height": 2}}
+
+    def test_expression_operation_permissions_and_union(self):
+        annotation = self.expression_annotation()
+        for operation in ("happy", "surprised"):
+            plan = plan_expression(self.raw, annotation, operation)
+            self.assertEqual(len(plan.mask), 18)
+            self.assertEqual(plan.mask, frozenset((x, y) for r in annotation["regions"]
+                for x in range(r["rect"]["x"], r["rect"]["x"] + 3)
+                for y in range(r["rect"]["y"], r["rect"]["y"] + 2)))
+            annotation["regions"].append(self.region("brow", "brows", 3, 2))
+            self.assertEqual(len(plan_expression(self.raw, annotation, operation).mask), 24)
+            annotation["regions"].pop()
+        for role in ("mouth", "brows"):
+            annotation["regions"] = [self.region("eye", "eyes", 3, 4),
+                                      self.region("other", role, 10, 10)]
+            with self.assertRaises(ValueError):
+                plan_expression(self.raw, annotation, "blink")
+        annotation["regions"] = annotation["regions"][:1]
+        self.assertEqual(len(plan_expression(self.raw, annotation, "blink").mask), 6)
+        for operation in ("happy", "surprised"):
+            with self.assertRaises(Abstention):
+                plan_expression(self.raw, annotation, operation)
+        for operation in ("smug", None, True, []):
+            with self.assertRaises(ValueError):
+                plan_expression(self.raw, annotation, operation)
+
+    def test_expression_annotation_refusals(self):
+        base = self.expression_annotation()
+        changes = [("source_sha256", "0" * 64), ("size", [32, 31]),
+                   ("size", [True, 32]), ("provider", ""), ("version", True)]
+        for key, value in changes:
+            annotation = copy.deepcopy(base)
+            annotation[key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                plan_expression(self.raw, annotation, "happy")
+        for key, value in (("label", ""), ("label", "right"), ("role", "face"),
+                           ("role", {}), ("confidence", True), ("confidence", float("nan")),
+                           ("status", "occluded"), ("status", "missing"),
+                           ("status", "uncertain"), ("confidence", .5)):
+            annotation = copy.deepcopy(base)
+            annotation["regions"][0][key] = value
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                plan_expression(self.raw, annotation, "happy")
+        for rect in ({"x": 31, "y": 4, "width": 3, "height": 2},
+                     {"x": True, "y": 4, "width": 3, "height": 2},
+                     {"x": 0, "y": 0, "width": 1, "height": 1},
+                     base["regions"][1]["rect"]):
+            annotation = copy.deepcopy(base)
+            annotation["regions"][0]["rect"] = rect
+            with self.assertRaises(ValueError):
+                plan_expression(self.raw, annotation, "happy")
+        for regions in ([], base["regions"][-1:]):
+            annotation = {**base, "regions": regions}
+            with self.assertRaises(Abstention):
+                plan_expression(self.raw, annotation, "happy")
+        annotation = copy.deepcopy(base)
+        del annotation["regions"][0]["role"]
+        with self.assertRaises(ValueError):
+            plan_expression(self.raw, annotation, "happy")
+
+    def test_expression_preservation_noop_and_immutable_input(self):
+        annotation = self.expression_annotation()
+        before = copy.deepcopy(annotation)
+        plan = plan_expression(self.raw, annotation, "surprised")
+        self.assertEqual(annotation, before)
+        metrics = validate_candidate(self.raw, plan, self.image)
+        self.assertTrue(metrics["no_op"])
+        self.assertFalse(metrics["expression_verified"])
+        proposal = pillow().new("RGB", self.image.size, (11, 21, 31))
+        pixels = list(proposal.getdata())
+        locked = lock_candidate(self.raw, plan, proposal)
+        self.assertEqual(list(proposal.getdata()), pixels)
+        self.assertEqual(list(locked.getdata()), list(lock_candidate(self.raw, plan, proposal).getdata()))
+        self.assertFalse(validate_candidate(self.raw, plan, locked)["expression_verified"])
+        for coordinate, color in (((0, 0), (2, 2, 3, 0)),
+                                  ((3, 4), (10, 20, 30, 0)),
+                                  ((3, 4), (11, 21, 31, 255))):
+            corrupt = locked.copy()
+            corrupt.putpixel(coordinate, color)
+            with self.assertRaises(ValueError):
+                validate_candidate(self.raw, plan, corrupt)
+        for forged in (replace(plan, mask=plan.mask | {(31, 31)}),
+                       replace(plan, mask=frozenset()), replace(plan, operation="blink"),
+                       replace(plan, size=(31, 32))):
+            with self.assertRaises(ValueError):
+                validate_candidate(self.raw, forged, locked)
+        with self.assertRaises(ValueError):
+            validate_candidate(self.raw + b"x", plan, locked)
+        with self.assertRaises(ValueError):
+            validate_candidate(self.raw, plan, locked.resize((16, 16)))
+        with self.assertRaises(ValueError):
+            validate_candidate(self.raw, plan, locked.convert("RGB"))
 
     def test_lazy_import_and_help(self):
         code = "import sys, edit_plan; assert 'torch' not in sys.modules; assert 'diffusers' not in sys.modules"
