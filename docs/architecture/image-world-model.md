@@ -1,8 +1,39 @@
 # Image World Model Approximation
 
-[Open the illustrated HTML version](image-world-model.html)
+<table>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <p><strong>01 · Accept baseline</strong></p>
+      <img src="../images/world-model/01-baseline.png" width="256" height="256" alt="Original Mint-maid sprite">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <p><strong>02 · Propose boxes</strong></p>
+      <img src="../images/world-model/02-candidate-boxes.png" width="256" height="256" alt="Candidate regions with red outline-only boxes">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <p><strong>03 · Classify regions</strong></p>
+      <img src="../images/world-model/03-part-labels.png" width="256" height="256" alt="Illustrative hair, eye and mouth region outlines">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <p><strong>04 · Plan safe edit</strong></p>
+      <img src="../images/world-model/04-edit-mask.png" width="256" height="256" alt="Actual eye-and-mouth edit mask; white pixels are editable">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <p><strong>05 · Regenerate part</strong></p>
+      <img src="../images/world-model/05-regenerated.png" width="256" height="256" alt="Saved raw happy-expression proposal">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <p><strong>06 · Overlay and review</strong></p>
+      <img src="../images/world-model/06-overlay-result.png" width="256" height="256" alt="Happy sprite with original pixels restored outside the edit mask">
+    </td>
+  </tr>
+</table>
 
-![Illustrated architecture using Mint, red candidate boxes, semantic labels, an edit mask, regeneration and original-pixel overlay](image-world-model.png)
+Region labels are illustrative, not automatic detections. White mask pixels are editable; the final result retains original pixels everywhere else.
+
+[Standalone overview](image-world-model.html)
 
 ## Flowchart
 

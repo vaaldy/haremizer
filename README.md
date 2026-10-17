@@ -1,15 +1,58 @@
 # haremizer
 
-An experimental Python toolkit for anime-style pixel-art portraits and
-term-chan-format sprite export.
-It combines local SDXL inference with explicit CPU post-processing and source-bound edits.
-It is not a reliable automatic character, expression, or animation generator.
+An experimental Animagine XL 4 + LoRA image generation model for bitmap / pixel-art anime girls.
 
-![Historical kawaii-maid base frame](artifacts/sprites/kawaii-maid/neutral-base.png)
+The main use case is term-chan: fully animated, with 9 expressions + blink from a text prompt... though it's an ambitious goal.
 
-Historical generated example, downsampled and color-keyed on CPU, with separately
-annotated blink edits. This is not native learned transparency or a model-quality
-promotion. See [sample provenance and limitations](docs/samples.md).
+## From prompt to Mint maid
+
+<table>
+  <tr>
+    <td valign="middle" width="65%">
+      <sub>YOUR PROMPT</sub>
+      <blockquote>A pixel-art anime girl with pale cyan bobbed hair, green eyes and fair skin, wearing a white maid uniform and a frilled headdress.</blockquote>
+      <sub>Example wording · existing generated render</sub>
+    </td>
+    <td align="center" width="35%">
+      <img src="docs/images/world-model/01-baseline.png" width="256" height="256" alt="Mint maid">
+    </td>
+  </tr>
+</table>
+
+## Image world model approximation
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <p><strong>01 · Accept baseline</strong></p>
+      <img src="docs/images/world-model/01-baseline.png" width="256" height="256" alt="Original Mint-maid sprite">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <p><strong>02 · Propose boxes</strong></p>
+      <img src="docs/images/world-model/02-candidate-boxes.png" width="256" height="256" alt="Candidate regions with red outline-only boxes">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <p><strong>03 · Classify regions</strong></p>
+      <img src="docs/images/world-model/03-part-labels.png" width="256" height="256" alt="Illustrative hair, eye and mouth region outlines">
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <p><strong>04 · Plan safe edit</strong></p>
+      <img src="docs/images/world-model/04-edit-mask.png" width="256" height="256" alt="Actual eye-and-mouth edit mask; white pixels are editable">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <p><strong>05 · Regenerate part</strong></p>
+      <img src="docs/images/world-model/05-regenerated.png" width="256" height="256" alt="Saved raw happy-expression proposal">
+    </td>
+    <td align="center" valign="top" width="33%">
+      <p><strong>06 · Overlay and review</strong></p>
+      <img src="docs/images/world-model/06-overlay-result.png" width="256" height="256" alt="Happy sprite with original pixels restored outside the edit mask">
+    </td>
+  </tr>
+</table>
+
+<sub>Illustrative region labels · Generated pixels inside the mask, original pixels outside · <a href="docs/architecture/image-world-model.md">Architecture</a> · <a href="docs/samples.md">Provenance</a></sub>
 
 ## Current capabilities
 
