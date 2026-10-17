@@ -89,3 +89,6 @@ Model weights, training references and generated examples have separate terms;
 MIT does not clear those assets for redistribution. See [NOTICE.md](NOTICE.md) for
 attribution and outstanding rights/provenance limits. Data, weights, private working
 files and run directories are deliberately excluded.
+
+For an explicit bounded local generation → CPU recovery → neutral JSON example,
+see [workflow](docs/workflow.md). Format success is not visual acceptance.

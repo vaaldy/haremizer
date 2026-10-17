@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "model": {
+    "path": "/path/to/authorized/local/snapshot",
+    "id": "cagliostrolab/animagine-xl-4.0",
+    "revision": "2b7c1b397761bf5bd3cc42e5b39ec99314a75a96",
+    "weight_sha256": {
+      "text_encoder/model.safetensors": "73528dedc471ea62c5d24bab6621e2ef6890aa136ca080c53f2d205c39ab18df",
+      "text_encoder_2/model.safetensors": "1669a15b906d7a8cc7e919fa44769750e612fe580e3d8ceed60acbc212aea1ca",
+      "unet/diffusion_pytorch_model.safetensors": "3e16857a3a195315e01b47d8b76b7e932856cc71e9b5812c03f891de98551743",
+      "vae/diffusion_pytorch_model.safetensors": "6353737672c94b96174cb590f711eac6edf2fcce5b6e91aa9d73c5adc589ee48"
+    }
+  },
+  "lora": {
+    "path": "/path/to/authorized/local/adapter.safetensors",
+    "sha256": "6fa58e58c26ffe646264bd420492bc6b4e06e94465473bc1f37f47bae29b8b92"
+  },
+  "prompt": "1girl, solo, kawaii, cute, fair skin, cyan hair, bob cut, big eyes, green eyes, tiny nose, small mouth, gentle smile, white maid dress, white headdress, high collar, upper body, whole head, flat magenta background, clean lines, pixel art, masterpiece, high score, great score",
+  "negative_prompt": "tan skin, thick eyebrows, heavy eyeliner, freckles, wide nose, big nose, teeth, open mouth, cleavage, rough texture, speckle, cropped head, blurry, chibi, worst quality, low quality, photo background, scenery, gradient background",
+  "seed": 33013,
+  "steps": 28,
+  "width": 768,
+  "height": 768,
+  "guidance_scale": 5,
+  "scheduler": "euler_ancestral",
+  "cpu_offload": true,
+  "max_cases": 1,
+  "layerdiffuse": null,
+  "recovery": {
+    "background": [
+      252,
+      215,
+      220
+    ],
+    "tolerance": 24,
+    "colors": 32,
+    "size": 64,
+    "selection_basis": "Explicit pastel-pink key measured from the frozen historical render border BEFORE any new inference. Prompt says magenta but actual historical background is pastel pink; no saturated-magenta compliance claim."
+  },
+  "export": {
+    "name": "neutral"
+  }
+}

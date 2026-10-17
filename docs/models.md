@@ -36,7 +36,8 @@ python -B -m haremizer.recovery --help
 python -B -m haremizer.sprite_export --help
 ```
 
-For a separately authorized inference run, supply explicit paths:
+For a bounded end-to-end run use the [workflow](workflow.md).
+The following is only the low-level sampler interface, not a run recommendation:
 
 ```sh
 python -B -m haremizer.sample --model /path/to/local/snapshot \

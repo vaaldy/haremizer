@@ -1,0 +1,13 @@
+{
+  "recipe": "neutral-recipe.json",
+  "recipe_sha256": "REPLACE_WITH_SHA256_OF_YOUR_RECIPE",
+  "timeout_seconds": 600,
+  "storage_roots": {
+    "project": "/path/to/project",
+    "runtime": "/path/to/runtime",
+    "uv": "/path/to/uv",
+    "python": "/path/to/python",
+    "coredump": "/path/to/coredump",
+    "miopen": "/path/to/miopen"
+  }
+}
