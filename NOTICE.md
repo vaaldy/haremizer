@@ -11,12 +11,13 @@ What this repository contains, what it deliberately leaves out, and the third-pa
 
 ## Not published
 
-- **Training data.** The curated reference sets under `data/` are not redistributed. They are CC0 or
-  CC-BY-4.0 pixel art used only to train adapters locally.
+- **Training data.** The reference sets under `data/` are not redistributed. Local lineage records
+  identify CC0 and CC-BY-4.0 references; this notice is not a blanket clearance of all local data.
 - **Model files and adapters.** No `*.safetensors`, checkpoint or base-model file is included. The
   trained LoRA adapters are local artefacts and are not distributed here.
-- **Third-party weights.** The LayerDiffuse transparency assets are downloaded at runtime from their
-  publisher and are not redistributed.
+- **Third-party weights.** Models and LayerDiffuse transparency assets must be provisioned separately
+  as local files. The tracked sampler/trainer use local-only loading, and the LayerDiffuse validator
+  checks existing hash-pinned assets; these tools do not download weights. No weights are redistributed.
 - **Runs.** `runs/` holds training runs, raw renders, logs, matrices and evaluation records and is
   excluded.
 
@@ -30,15 +31,25 @@ What this repository contains, what it deliberately leaves out, and the third-pa
 | CC0 reference art (`everface`, `nekomimi`/cawfeecrow, druiddess) | training references | CC0 | no |
 | CC-BY-4.0 reference art (`pebonius`, `alexwh`) | training references | CC-BY-4.0, attribution recorded in the run lineage | no |
 
-Attribution for the reference art is recorded in the dataset manifests and run lineage files, which name
-each artist, the source page, the licence and the transform applied.
+Attribution for the reference art is recorded in local dataset manifests and run lineage files, which
+are not distributed. The minimal [public sample record](docs/samples.md) retains verified available
+credits and hashes, and explicitly identifies gaps. These records do not establish legal clearance of
+generated samples or complete upstream model authenticity.
 
 ## Reproducing the pipeline
 
-Nothing here can retrain an adapter by itself: the reference images are deliberately absent. The code will
-reproduce every deterministic step — keying, palette reduction, blink edits, sprite export — from any
-render, and the tests cover those steps without a GPU.
+A checkout alone cannot retrain an adapter: reference images, weights and the ML runtime are absent.
+CPU tools implement deterministic keying, palette reduction and sprite export for valid supplied
+inputs; localized blink edits additionally require source-bound annotations. Tests cover these steps
+without establishing semantic quality, automatic detection or robust native transparency.
 
 ## Licence of this repository
 
-Not yet chosen. Until a `LICENSE` file is added, all rights are reserved by the author.
+Original code is MIT licensed, copyright 2026 Haremizer contributors; see [LICENSE](LICENSE).
+The adapted LayerDiffuse code in `layerdiffuse.py` remains Apache-2.0 under
+[LICENSE.layerdiffuse.txt](LICENSE.layerdiffuse.txt), with its existing upstream attribution preserved.
+MIT does not relicense third-party code, model weights, datasets or generated-example artwork.
+Model/data/generated-output terms must be checked separately before redistribution. Available local
+provenance is incomplete for some samples; no artist permission, human approval or comprehensive
+rights clearance is asserted. Historical documents predate this license decision and are not current
+licensing or operational authority.

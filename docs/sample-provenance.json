@@ -1,0 +1,330 @@
+{
+  "version": 1,
+  "scope": "Tracked sample hashes and minimal local sidecar evidence; not a rights grant or quality verdict.",
+  "samples": [
+    {
+      "sample": "best400-curly-prototype",
+      "files": {
+        "neutral-base.png": {
+          "sha256": "66f69814993cd8afcb03bf0412293747614a5278fccde357f01e7150cb30b7eb",
+          "bytes": 4825
+        },
+        "neutral-blink.png": {
+          "sha256": "ea15f21b5e026aecf9c11086f19ca97e6893325a211fba3404a63daf5821e0db",
+          "bytes": 4802
+        },
+        "neutral.json": {
+          "sha256": "b76771e0c5545f06a4c5fc9c8f9233ff32ce85d24e27fb5bbe5d22d8fc08792e",
+          "bytes": 10086
+        },
+        "preview.png": {
+          "sha256": "616c7d5af684735ae9430e1bd2c389b8e246a129ed1a666dfbc9025d05184f24",
+          "bytes": 7495
+        }
+      },
+      "local_provenance_sha256": "3717643d59a95cde38be468c4d35cc8c3fd3a2c1469c60a88a82fe9c45158563",
+      "rights_status": "Not cleared by the code MIT license; generated-output rights and complete lineage remain unverified.",
+      "model": {
+        "id": "cagliostrolab/animagine-xl-4.0",
+        "revision": "2b7c1b397761bf5bd3cc42e5b39ec99314a75a96",
+        "identity_scope": "file names/sizes and JSON hashes; not weight-content attestation"
+      },
+      "adapter_sha256": "aa235ac8cf23ced1935c96bdcb9f50f05fb8b68d3ec971d065c62fb6d5f74736",
+      "raw_render_sha256": "238ab6aa75d696a24b0d0bdb47b477854f320692ba20fae321fb6b42a1a1f233",
+      "processing_evidence": "Explicit RGB255,255,255 tolerance16 recovery, BOX64 alpha128 MEDIANCUT32; per-image machine manual eye-only23-pixel closed-lid edits; lossless JSON shared palette",
+      "recorded_training_reference_credits": [
+        {
+          "source_url": "https://opengameart.org/content/64px-portraits",
+          "license": "CC-BY-4.0",
+          "credit": "peb / pebonius \u2014 https://opengameart.org/content/64px-portraits"
+        },
+        {
+          "source_url": "https://opengameart.org/content/everface",
+          "license": "CC0-1.0",
+          "credit": "Efilheim \u2014 https://opengameart.org/content/everface (voluntary attribution retained)"
+        }
+      ],
+      "credit_scope": "Local training-request attribution only, not output authorship or legal clearance."
+    },
+    {
+      "sample": "kawaii-maid",
+      "files": {
+        "neutral-base.png": {
+          "sha256": "fedece9b2e186d96616feee3aca99ac0cc56297bd9bdbe6e40861a89c66eb77a",
+          "bytes": 3911
+        },
+        "neutral-blink.png": {
+          "sha256": "1dea645c898129993b53cf8c1eac2bc79fe2e3be2bd49e6772ed404a444fca41",
+          "bytes": 3928
+        },
+        "neutral.json": {
+          "sha256": "27d4a7e9e155eb27632662f95963c63f4d0d23b04d3aa07594304c31cda4bde1",
+          "bytes": 10086
+        },
+        "preview.png": {
+          "sha256": "033676cbd655c5e8a9dfb0b322d62a79bb77acfd0fcf65034bd76ef3513aa7f4",
+          "bytes": 6586
+        }
+      },
+      "local_provenance_sha256": "e637e9cbcdb96d0503009dd385644aee2853ef5593448a533316a04f8867dac9",
+      "rights_status": "Not cleared by the code MIT license; generated-output rights and complete lineage remain unverified.",
+      "processing_evidence": {
+        "tool": "sprite_export",
+        "inputs": {
+          "base": {
+            "sha256": "fedece9b2e186d96616feee3aca99ac0cc56297bd9bdbe6e40861a89c66eb77a",
+            "bytes": 3911
+          },
+          "blink": {
+            "sha256": "1dea645c898129993b53cf8c1eac2bc79fe2e3be2bd49e6772ed404a444fca41",
+            "bytes": 3928
+          }
+        },
+        "exported_json_matches_sidecar": true,
+        "preservation_scope": "opaque RGB and binary alpha exact; hidden transparent RGB not serialized",
+        "blink_semantics": "exports given frames only; no closed-eye verification or localization assertion"
+      },
+      "model": "Not established by this export-only sidecar; no inferred model/artist attribution."
+    },
+    {
+      "sample": "kawaii-maid-early",
+      "files": {
+        "neutral-base.png": {
+          "sha256": "fedece9b2e186d96616feee3aca99ac0cc56297bd9bdbe6e40861a89c66eb77a",
+          "bytes": 3911
+        },
+        "neutral-blink.png": {
+          "sha256": "ca8b1152867a7858c677d4c559deea2b951ea743d144524b1aa824b8b4b5b1eb",
+          "bytes": 3848
+        },
+        "neutral.json": {
+          "sha256": "71981f991c4cbd82c4ca08841db2f49b18b8ce31336fc94cf1aa4d0295aaef37",
+          "bytes": 10086
+        },
+        "preview.png": {
+          "sha256": "7b3f7f9e677037ee6aa46ff0e4af9549a37cf11e2a40976fb7ab1c53800288bf",
+          "bytes": 6598
+        }
+      },
+      "local_provenance_sha256": "f031f6e4ae0f9c1b512466e186a46a9c0dd3c55cf481434c8744f444c1ff64b6",
+      "rights_status": "Not cleared by the code MIT license; generated-output rights and complete lineage remain unverified.",
+      "processing_evidence": {
+        "tool": "sprite_export",
+        "inputs": {
+          "base": {
+            "sha256": "fedece9b2e186d96616feee3aca99ac0cc56297bd9bdbe6e40861a89c66eb77a",
+            "bytes": 3911
+          },
+          "blink": {
+            "sha256": "ca8b1152867a7858c677d4c559deea2b951ea743d144524b1aa824b8b4b5b1eb",
+            "bytes": 3848
+          }
+        },
+        "exported_json_matches_sidecar": true,
+        "preservation_scope": "opaque RGB and binary alpha exact; hidden transparent RGB not serialized",
+        "blink_semantics": "exports given frames only; no closed-eye verification or localization assertion"
+      },
+      "model": "Not established by this export-only sidecar; no inferred model/artist attribution."
+    },
+    {
+      "sample": "long-wavy-export-test",
+      "files": {
+        "neutral-base.png": {
+          "sha256": "ccbb44b3b1a2e51cb4d2322b4ffb6ef64e80524e6f885970e788964b98101021",
+          "bytes": 3449
+        },
+        "neutral-blink.png": {
+          "sha256": "caf95aa04e9150a9366798b479b90315fddb3431568914fe9c3ee7a800bb016a",
+          "bytes": 3385
+        },
+        "neutral.json": {
+          "sha256": "cc43907016a3101000ea9afb841b843c0c5289f2491e218bc83cd313c796d7d2",
+          "bytes": 10086
+        },
+        "preview.png": {
+          "sha256": "07fa6c2d9bbe24ba17218a9cab015a8b0a765d57a2da73cb26d037374c1d6762",
+          "bytes": 5953
+        }
+      },
+      "local_provenance_sha256": "c1e3213e5c682971f9ef86aa060854ad579f215336073c2cc3a0fe02ad2ad4ab",
+      "rights_status": "Not cleared by the code MIT license; generated-output rights and complete lineage remain unverified.",
+      "processing_evidence": {
+        "tool": "sprite_export",
+        "inputs": {
+          "base": {
+            "sha256": "ccbb44b3b1a2e51cb4d2322b4ffb6ef64e80524e6f885970e788964b98101021",
+            "bytes": 3449
+          },
+          "blink": {
+            "sha256": "caf95aa04e9150a9366798b479b90315fddb3431568914fe9c3ee7a800bb016a",
+            "bytes": 3385
+          }
+        },
+        "exported_json_matches_sidecar": true,
+        "preservation_scope": "opaque RGB and binary alpha exact; hidden transparent RGB not serialized",
+        "blink_semantics": "exports given frames only; no closed-eye verification or localization assertion"
+      },
+      "model": "Not established by this export-only sidecar; no inferred model/artist attribution."
+    },
+    {
+      "sample": "mint-maid-legible",
+      "files": {
+        "neutral-base.png": {
+          "sha256": "f2afe46934cc2b6a2b00aec37ffb8c431168a0d3fc99bf1f46e11b4e1b02057b",
+          "bytes": 3785
+        },
+        "neutral-blink.png": {
+          "sha256": "e7fa91f7eeee824d3c08794e405f9ddda595c316c74048a2c34c47edaba7cc2d",
+          "bytes": 3640
+        },
+        "neutral.json": {
+          "sha256": "a59f0609376451e68017ae98a253ad5784bb0e1acf5bf02569b92412324f7ba8",
+          "bytes": 10536
+        },
+        "preview.png": {
+          "sha256": "0f74a7adc95f2792fa212574853bcd469cdec48cd90b4379cbfcaef715d13648",
+          "bytes": 6386
+        }
+      },
+      "local_provenance_sha256": "89299cc0188f9bc9ab5e073b89d69bc982ee95391f5f23e2c9e9c59ab43afa4f",
+      "rights_status": "Not cleared by the code MIT license; generated-output rights and complete lineage remain unverified.",
+      "processing_evidence": {
+        "tool": "sprite_export",
+        "inputs": {
+          "base": {
+            "sha256": "f2afe46934cc2b6a2b00aec37ffb8c431168a0d3fc99bf1f46e11b4e1b02057b",
+            "bytes": 3785
+          },
+          "blink": {
+            "sha256": "e7fa91f7eeee824d3c08794e405f9ddda595c316c74048a2c34c47edaba7cc2d",
+            "bytes": 3640
+          }
+        },
+        "exported_json_matches_sidecar": true,
+        "preservation_scope": "opaque RGB and binary alpha exact; hidden transparent RGB not serialized",
+        "blink_semantics": "exports given frames only; no closed-eye verification or localization assertion"
+      },
+      "model": "Not established by this export-only sidecar; no inferred model/artist attribution."
+    },
+    {
+      "sample": "mint-maid-white",
+      "files": {
+        "neutral-base.png": {
+          "sha256": "71302f92413789da5f4a7ba30c4a6b5a2399f31d5d5dbe17de0660ad2a2fbf92",
+          "bytes": 3787
+        },
+        "neutral-blink.png": {
+          "sha256": "520a1621a0c7153e1b64a2028c4f47760759515b76eda449619f401987d54036",
+          "bytes": 3645
+        },
+        "neutral.json": {
+          "sha256": "c8720186de9a05b78d200141d50ba3ead8e0d16f060728a1d25b56297554d7b8",
+          "bytes": 10536
+        },
+        "preview.png": {
+          "sha256": "5aa0814522095fdf7ec49ad32355a64bf25fdc6e3dcced550c75625fd28c6cf3",
+          "bytes": 6380
+        }
+      },
+      "local_provenance_sha256": "4257dc7d62b138fa1933a3bd71adbf5aeb9edeccdc171732aa2e44bd8a481d6d",
+      "rights_status": "Not cleared by the code MIT license; generated-output rights and complete lineage remain unverified.",
+      "processing_evidence": {
+        "tool": "sprite_export",
+        "inputs": {
+          "base": {
+            "sha256": "71302f92413789da5f4a7ba30c4a6b5a2399f31d5d5dbe17de0660ad2a2fbf92",
+            "bytes": 3787
+          },
+          "blink": {
+            "sha256": "520a1621a0c7153e1b64a2028c4f47760759515b76eda449619f401987d54036",
+            "bytes": 3645
+          }
+        },
+        "exported_json_matches_sidecar": true,
+        "preservation_scope": "opaque RGB and binary alpha exact; hidden transparent RGB not serialized",
+        "blink_semantics": "exports given frames only; no closed-eye verification or localization assertion"
+      },
+      "model": "Not established by this export-only sidecar; no inferred model/artist attribution."
+    },
+    {
+      "sample": "mint-maid-white-deeper-blink",
+      "files": {
+        "neutral-base.png": {
+          "sha256": "71302f92413789da5f4a7ba30c4a6b5a2399f31d5d5dbe17de0660ad2a2fbf92",
+          "bytes": 3787
+        },
+        "neutral-blink.png": {
+          "sha256": "71948a5ee514e8ffba2675d94d6c0c26d3beda56ef510045afcdd5b740d973da",
+          "bytes": 3640
+        },
+        "neutral.json": {
+          "sha256": "788b0756268393d306d734163eddb0fdb5899f059661120d820af79e8b36ad56",
+          "bytes": 10536
+        },
+        "preview.png": {
+          "sha256": "be2d4ebec9e2b7c6eeb3120f0d42159e6046e28215ee12a49e0fe0d9a18b40ce",
+          "bytes": 6386
+        }
+      },
+      "local_provenance_sha256": "8813fa1c37931938c44dd87379bd988159cdf1090891bd67cef8cde9f1926c5c",
+      "rights_status": "Not cleared by the code MIT license; generated-output rights and complete lineage remain unverified.",
+      "processing_evidence": {
+        "tool": "sprite_export",
+        "inputs": {
+          "base": {
+            "sha256": "71302f92413789da5f4a7ba30c4a6b5a2399f31d5d5dbe17de0660ad2a2fbf92",
+            "bytes": 3787
+          },
+          "blink": {
+            "sha256": "71948a5ee514e8ffba2675d94d6c0c26d3beda56ef510045afcdd5b740d973da",
+            "bytes": 3640
+          }
+        },
+        "exported_json_matches_sidecar": true,
+        "preservation_scope": "opaque RGB and binary alpha exact; hidden transparent RGB not serialized",
+        "blink_semantics": "exports given frames only; no closed-eye verification or localization assertion"
+      },
+      "model": "Not established by this export-only sidecar; no inferred model/artist attribution."
+    },
+    {
+      "sample": "rado-chan",
+      "files": {
+        "neutral-base.png": {
+          "sha256": "ed69d4885bb327444e4c86375c04a10ce5e9a805231f69da33b6d02a57e4a6d8",
+          "bytes": 2495
+        },
+        "neutral-blink.png": {
+          "sha256": "1698d36f2c054451b2c7b9ebe1d2af77c61e1f6b3f9a07b0f6da78aefb36409a",
+          "bytes": 2416
+        },
+        "neutral.json": {
+          "sha256": "0b684056f86ec02be93a2ea38cb8b2624f8aa97b2741e75048559316e606a7cc",
+          "bytes": 10086
+        },
+        "preview.png": {
+          "sha256": "a8a57ac038a4d5f2ff35be1e8d5eaf0f1ac1954eff010240498d1e478f352dad",
+          "bytes": 4576
+        }
+      },
+      "local_provenance_sha256": "679fb1a6ca26d5278f7ba3ad53ed5ea8204cb291207abf28c2f808a591e84437",
+      "rights_status": "Not cleared by the code MIT license; generated-output rights and complete lineage remain unverified.",
+      "processing_evidence": {
+        "tool": "sprite_export",
+        "inputs": {
+          "base": {
+            "sha256": "ed69d4885bb327444e4c86375c04a10ce5e9a805231f69da33b6d02a57e4a6d8",
+            "bytes": 2495
+          },
+          "blink": {
+            "sha256": "1698d36f2c054451b2c7b9ebe1d2af77c61e1f6b3f9a07b0f6da78aefb36409a",
+            "bytes": 2416
+          }
+        },
+        "exported_json_matches_sidecar": true,
+        "preservation_scope": "opaque RGB and binary alpha exact; hidden transparent RGB not serialized",
+        "blink_semantics": "exports given frames only; no closed-eye verification or localization assertion"
+      },
+      "model": "Not established by this export-only sidecar; no inferred model/artist attribution."
+    }
+  ]
+}
