@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import hashlib
 import math
 
-from edit_plan import _image
+from .edit_plan import _image
 
 
 def _number(value, name, low, high):

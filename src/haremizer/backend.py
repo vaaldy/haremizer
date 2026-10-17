@@ -12,10 +12,10 @@ import signal
 import subprocess
 import sys
 
-from core import Attempt, fingerprint
-from images import pillow
-from prepare import canonical_digest, freeze_suite, nonempty, validate_dataset
-from runtime import probe_runtime
+from .core import Attempt, fingerprint
+from .images import pillow
+from .prepare import canonical_digest, freeze_suite, nonempty, validate_dataset
+from .runtime import probe_runtime
 
 
 CONTRACT = "reviewed-diffusers-sd1-text-to-image-lora-v1"

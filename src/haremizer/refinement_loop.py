@@ -14,17 +14,28 @@ import tempfile
 import time
 from datetime import datetime, timezone
 
-from core import REQUIRED_CHECKS, fingerprint
-from images import validate_png
-from prepare import canonical_digest, freeze_suite
-import smoke_sdxl
-from sample import model_manifest
+from .core import REQUIRED_CHECKS, fingerprint
+from .images import validate_png
+from .prepare import canonical_digest, freeze_suite
+from . import smoke_sdxl
+from .sample import model_manifest
 
 LIMIT = 100_000_000_000
 ALLOWANCE = 200_000_000 + 2_000_000_000
 SETTINGS = {"width": 768, "height": 768, "steps": 28, "guidance_scale": 5,
             "model_cpu_offload": True}
-ROOT = Path(__file__).resolve().parent
+SOURCE = Path(__file__).resolve().parent
+
+
+def module_argv(python, module):
+    """Run a module from this same installation, not another interpreter's copy."""
+    bootstrap = (
+        "import pathlib,runpy,sys,haremizer; "
+        "origin=pathlib.Path(haremizer.__file__).resolve().parent; "
+        f"assert origin == pathlib.Path({str(SOURCE)!r}), 'package origin mismatch'; "
+        "module=sys.argv.pop(1); runpy.run_module(module,run_name='__main__')"
+    )
+    return [str(python), "-I", "-B", "-c", bootstrap, f"haremizer.{module}"]
 
 
 def utc(value):
@@ -135,8 +146,7 @@ class Loop:
             absolute(name)
         if not any(directory.is_relative_to(absolute(name)) for name in paths):
             raise ValueError("storage_paths must cover run directory")
-        modules = [ROOT / name for name in ("refinement_loop.py", "smoke_sdxl.py", "sample.py",
-                                           "prepare.py", "images.py", "core.py")]
+        modules = sorted(SOURCE.glob("*.py"))
         bindings = [identity(Path(plan["python"])), *map(identity, modules), *tree(model_path)]
         suites = {}
         for group in ("suites", "validation_suites"):
@@ -334,7 +344,7 @@ class Loop:
         try:
             with open(record["stdout"], "xb") as stdout, open(record["stderr"], "xb") as stderr:
                 process = subprocess.Popen(argv, stdout=stdout, stderr=stderr, env=environment,
-                                           cwd=ROOT, start_new_session=True, preexec_fn=child_limits)
+                                           cwd=directory, start_new_session=True, preexec_fn=child_limits)
                 record["owned_pgid"] = process.pid
                 self.save()
                 last_storage = time.monotonic()
@@ -427,7 +437,7 @@ class Loop:
             if not validation:
                 self.preflight(Path(queue["request"]["path"]), directory / "train")
                 self.verify()
-                self.process(stage, [self.plan["python"], "-B", str(ROOT / "smoke_sdxl.py"),
+                self.process(stage, [*module_argv(self.plan["python"], "smoke_sdxl"),
                                      "--refine", "--request", queue["request"]["path"],
                                      "--output", str(directory / "train")], self.plan["train_seconds"], "train")
                 outcome = identity(directory / "train" / "outcome.json")
@@ -456,7 +466,7 @@ class Loop:
                 self.verify()
                 check_identity(checkpoint)
                 output = directory / f"sample-{index}"
-                argv = [self.plan["python"], "-B", str(ROOT / "sample.py"), "--model", self.plan["model"]["path"],
+                argv = [*module_argv(self.plan["python"], "sample"), "--model", self.plan["model"]["path"],
                         "--model-id", self.plan["model"]["id"], "--revision", self.plan["model"]["revision"],
                         "--output", str(output), "--suite", suite["frozen"]["path"],
                         "--width", "768", "--height", "768", "--steps", "28", "--max-cases", "4",

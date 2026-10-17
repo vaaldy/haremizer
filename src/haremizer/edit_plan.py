@@ -9,7 +9,7 @@ import json
 import math
 from pathlib import Path
 
-from images import pillow
+from .images import pillow
 
 
 class Abstention(ValueError):

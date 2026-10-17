@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from PIL import Image
-import smoke_sdxl as smoke
+from haremizer import smoke_sdxl as smoke
 
 
 class SmokePreflightTests(unittest.TestCase):

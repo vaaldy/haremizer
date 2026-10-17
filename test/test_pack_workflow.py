@@ -18,13 +18,12 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PIL import Image  # noqa: E402
 
-from sprite_export import export_sprite  # noqa: E402
+from haremizer.sprite_export import export_sprite  # noqa: E402
 
-PARENT = Path(__file__).resolve().parent.parent.parent
+PARENT = Path(os.environ.get('TERM_CHAN_ROOT', Path(__file__).resolve().parent.parent.parent)).resolve()
 NODE_SCRIPT = """
 const { loadCharacter } = await import(process.argv[1]);
 const { createCompanion } = await import(process.argv[2]);

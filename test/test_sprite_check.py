@@ -5,7 +5,7 @@ import unittest
 
 from PIL import Image
 
-from sprite_check import check_legibility
+from haremizer.sprite_check import check_legibility
 
 
 class LegibilityTests(unittest.TestCase):

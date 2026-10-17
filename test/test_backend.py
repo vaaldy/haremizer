@@ -10,10 +10,10 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-import backend
-from core import Attempt, Run, fingerprint
-from images import pillow
-import prepare
+from haremizer import backend
+from haremizer.core import Attempt, Run, fingerprint
+from haremizer.images import pillow
+from haremizer import prepare
 
 
 class BackendTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class BackendTests(unittest.TestCase):
             if k not in (*backend.ENV_KEYS, "PYTHONPATH", "PYTHONHOME", "LD_LIBRARY_PATH", "LD_PRELOAD")}, clear=True)
         self.env.start()
         self.addCleanup(self.env.stop)
-        self.deps = patch("backend.dependencies", return_value=[("torch", "fixture-torch", "fixture-installation")])
+        self.deps = patch("haremizer.backend.dependencies", return_value=[("torch", "fixture-torch", "fixture-installation")])
         self.deps.start()
         self.addCleanup(self.deps.stop)
         self.facts = {
@@ -48,7 +48,7 @@ class BackendTests(unittest.TestCase):
                 "license": "test only", "training_allowed" if split == "train" else "evaluation_allowed": True})
         (self.root / "rights.json").write_text(json.dumps(rights))
         self.suite = self.root / "suite.json"
-        self.suite.write_bytes((ROOT / "evaluation-suite.json").read_bytes())
+        self.suite.write_bytes((Path(prepare.__file__).with_name("evaluation-suite.json")).read_bytes())
         self.model = self.root / "model"
         self.model.mkdir()
         (self.model / "model_index.json").write_text(json.dumps({"_class_name": "StableDiffusionPipeline", "unet": ["diffusers", "UNet2DConditionModel"]}))
@@ -57,7 +57,7 @@ class BackendTests(unittest.TestCase):
         self.script = self.root / "script ; $(touch INJECTION)" / "train_text_to_image_lora.py"
         self.script.parent.mkdir()
         self.script.write_text("raise AssertionError('TEST SCRIPT MUST NEVER EXECUTE')\n")
-        with patch("prepare.probe_runtime", return_value=self.facts):
+        with patch("haremizer.prepare.probe_runtime", return_value=self.facts):
             self.plan = prepare.build_plan(train=self.root / "train", evaluation=self.root / "eval",
                 rights=self.root / "rights.json", suite=self.suite, model="fixture/sd1", revision=revision,
                 training_resolution=128, steps=1, rank=1)
@@ -104,8 +104,8 @@ class BackendTests(unittest.TestCase):
         return Mock(pid=12345, wait=Mock(return_value=0))
 
     def test_preview_and_cli_never_launch_or_populate_human_approval(self):
-        with patch("backend.subprocess.Popen", side_effect=AssertionError("no process")), patch(
-                "backend.probe_runtime", side_effect=AssertionError("no GPU")), patch("builtins.print") as printed, patch(
+        with patch("haremizer.backend.subprocess.Popen", side_effect=AssertionError("no process")), patch(
+                "haremizer.backend.probe_runtime", side_effect=AssertionError("no GPU")), patch("builtins.print") as printed, patch(
                 "sys.argv", ["backend.py", str(self.request)]):
             preview = self.trainer.preview()
             backend.main()
@@ -125,7 +125,7 @@ class BackendTests(unittest.TestCase):
         attempt = self.attempt()
         cases = ({}, {"training_authorized": False}, {"execution_sha256": "wrong"},
                  {"preparation_sha256": "wrong"}, {"approved_by": ""}, {"note": ""})
-        with patch("backend.probe_runtime") as probe, patch("backend.subprocess.Popen") as launch:
+        with patch("haremizer.backend.probe_runtime") as probe, patch("haremizer.backend.subprocess.Popen") as launch:
             with self.assertRaises(FileNotFoundError):
                 self.trainer.train(attempt)
             for changes in cases:
@@ -146,8 +146,8 @@ class BackendTests(unittest.TestCase):
             self.authorize_fixture()
             original = target.read_bytes()
             target.write_bytes(original + b"changed")
-            with self.subTest(target=target), patch("backend.probe_runtime") as probe, patch(
-                    "backend.subprocess.Popen") as launch, self.assertRaises((ValueError, json.JSONDecodeError)):
+            with self.subTest(target=target), patch("haremizer.backend.probe_runtime") as probe, patch(
+                    "haremizer.backend.subprocess.Popen") as launch, self.assertRaises((ValueError, json.JSONDecodeError)):
                 self.trainer.train(attempt)
             probe.assert_not_called()
             launch.assert_not_called()
@@ -165,7 +165,7 @@ class BackendTests(unittest.TestCase):
         with patch.dict(os.environ, {"HSA_OVERRIDE_GFX_VERSION": "10.3.0"}), self.assertRaisesRegex(ValueError, "environment"):
             self.trainer.preview()
         self.authorize_fixture()
-        with patch("backend.dependencies", return_value=[("torch", "changed", "changed")]), self.assertRaisesRegex(ValueError, "torch"):
+        with patch("haremizer.backend.dependencies", return_value=[("torch", "changed", "changed")]), self.assertRaisesRegex(ValueError, "torch"):
             self.trainer.preview()
         self.plan["model"]["revision"] = "main"
         self.save_plan()
@@ -181,22 +181,22 @@ class BackendTests(unittest.TestCase):
             original = self.spec[key]
             self.spec[key] = value
             self.save_spec()
-            with self.subTest(key=key), patch("backend.probe_runtime") as probe, self.assertRaisesRegex(ValueError, "authorization"):
+            with self.subTest(key=key), patch("haremizer.backend.probe_runtime") as probe, self.assertRaisesRegex(ValueError, "authorization"):
                 self.trainer.train(attempt)
             probe.assert_not_called()
             self.spec[key] = original
             self.save_spec()
         self.authorize_fixture()
-        with patch("backend.dependencies", return_value=[("torch", "fixture-torch", "different-install")]), self.assertRaisesRegex(ValueError, "authorization"):
+        with patch("haremizer.backend.dependencies", return_value=[("torch", "fixture-torch", "different-install")]), self.assertRaisesRegex(ValueError, "authorization"):
             self.trainer.train(attempt)
         real_fingerprint = backend.fingerprint
-        with patch("backend.fingerprint", side_effect=lambda p: "different-python" if Path(p) == Path(sys.executable) else real_fingerprint(p)), self.assertRaisesRegex(ValueError, "authorization"):
+        with patch("haremizer.backend.fingerprint", side_effect=lambda p: "different-python" if Path(p) == Path(sys.executable) else real_fingerprint(p)), self.assertRaisesRegex(ValueError, "authorization"):
             self.trainer.train(attempt)
 
     def test_unrecorded_interpreter_loader_overrides_are_rejected_not_changed(self):
         for key in ("PYTHONPATH", "PYTHONHOME", "LD_LIBRARY_PATH", "LD_PRELOAD"):
             with self.subTest(key=key), patch.dict(os.environ, {key: "/unrecorded"}), patch(
-                    "backend.probe_runtime") as probe, patch("backend.subprocess.Popen") as launch:
+                    "haremizer.backend.probe_runtime") as probe, patch("haremizer.backend.subprocess.Popen") as launch:
                 before = dict(os.environ)
                 with self.assertRaisesRegex(ValueError, key + ".*clean dedicated runner"):
                     self.trainer.preview()
@@ -210,8 +210,8 @@ class BackendTests(unittest.TestCase):
         for key in ("torch_version", "hip_version", "cuda_version", "device", "gpu_visible"):
             facts = json.loads(json.dumps(self.facts))
             facts["torch_probe"]["evidence"][key] = "changed"
-            with self.subTest(key=key), patch("backend.probe_runtime", return_value=facts), patch(
-                    "backend.subprocess.Popen") as launch, self.assertRaisesRegex(ValueError, "runtime changed"):
+            with self.subTest(key=key), patch("haremizer.backend.probe_runtime", return_value=facts), patch(
+                    "haremizer.backend.subprocess.Popen") as launch, self.assertRaisesRegex(ValueError, "runtime changed"):
                 self.trainer.train(attempt)
             launch.assert_not_called()
             provenance = attempt.directory / "backend.json"
@@ -236,7 +236,7 @@ class BackendTests(unittest.TestCase):
         self.authorize_fixture()
         attempt = self.attempt()
         (cache / "weights.fake").write_bytes(b"changed cache")
-        with patch("backend.probe_runtime") as probe, self.assertRaisesRegex(ValueError, "authorization"):
+        with patch("haremizer.backend.probe_runtime") as probe, self.assertRaisesRegex(ValueError, "authorization"):
             self.trainer.train(attempt)
         probe.assert_not_called()
         self.plan["model"]["id"] = "different/model"
@@ -268,19 +268,19 @@ class BackendTests(unittest.TestCase):
         attempt = self.attempt()
         with patch.dict(os.environ, {"HSA_OVERRIDE_GFX_VERSION": override}):
             self.authorize_fixture()
-            with patch("backend.probe_runtime") as probe, self.assertRaisesRegex(ValueError, "acknowledge"):
+            with patch("haremizer.backend.probe_runtime") as probe, self.assertRaisesRegex(ValueError, "acknowledge"):
                 self.trainer.train(attempt)
             probe.assert_not_called()
             self.authorize_fixture(note="I acknowledge HSA_OVERRIDE_GFX_VERSION=10.3.0 unsupported compatibility workaround")
-            with patch("backend.probe_runtime", return_value={}), patch("backend.subprocess.Popen") as launch, self.assertRaisesRegex(ValueError, "runtime changed"):
+            with patch("haremizer.backend.probe_runtime", return_value={}), patch("haremizer.backend.subprocess.Popen") as launch, self.assertRaisesRegex(ValueError, "runtime changed"):
                 self.trainer.train(attempt)
             launch.assert_not_called()
 
     def test_valid_mock_output_nearest_flatten_offline_argv_and_provenance(self):
         self.authorize_fixture()
         attempt = self.attempt()
-        with patch("backend.probe_runtime", return_value=self.facts) as probe, patch(
-                "backend.subprocess.Popen", side_effect=self.output_process) as launch, patch("backend.os.killpg"):
+        with patch("haremizer.backend.probe_runtime", return_value=self.facts) as probe, patch(
+                "haremizer.backend.subprocess.Popen", side_effect=self.output_process) as launch, patch("haremizer.backend.os.killpg"):
             checkpoint = self.trainer.train(attempt)
         probe.assert_called_once_with(True)
         self.assertGreater(checkpoint.stat().st_size, 0)
@@ -309,8 +309,8 @@ class BackendTests(unittest.TestCase):
         self.authorize_fixture()
         attempt = self.attempt()
         process = Mock(pid=12345, wait=Mock(side_effect=[subprocess.TimeoutExpired("mock", 10), -9]))
-        with patch("backend.probe_runtime", return_value=self.facts), patch(
-                "backend.subprocess.Popen", return_value=process), patch("backend.os.killpg") as kill, self.assertRaises(subprocess.TimeoutExpired):
+        with patch("haremizer.backend.probe_runtime", return_value=self.facts), patch(
+                "haremizer.backend.subprocess.Popen", return_value=process), patch("haremizer.backend.os.killpg") as kill, self.assertRaises(subprocess.TimeoutExpired):
             self.trainer.train(attempt)
         kill.assert_called_once_with(12345, signal.SIGKILL)
         process.wait.assert_any_call(timeout=10)
@@ -321,8 +321,8 @@ class BackendTests(unittest.TestCase):
         attempt = self.attempt()
         original = subprocess.TimeoutExpired("mock training", 10)
         process = Mock(pid=12345, wait=Mock(side_effect=[original, subprocess.TimeoutExpired("mock cleanup", 5)]))
-        with patch("backend.probe_runtime", return_value=self.facts), patch(
-                "backend.subprocess.Popen", return_value=process), patch("backend.os.killpg"), self.assertRaises(
+        with patch("haremizer.backend.probe_runtime", return_value=self.facts), patch(
+                "haremizer.backend.subprocess.Popen", return_value=process), patch("haremizer.backend.os.killpg"), self.assertRaises(
                 subprocess.TimeoutExpired) as raised:
             self.trainer.train(attempt)
         self.assertIs(raised.exception, original)
@@ -345,8 +345,8 @@ class BackendTests(unittest.TestCase):
                     else:
                         weights.symlink_to(self.model / "weights.fake")
                 return Mock(pid=12345, wait=Mock(return_value=1 if case == "exit" else 0))
-            with self.subTest(case=case), patch("backend.probe_runtime", return_value=self.facts), patch(
-                    "backend.subprocess.Popen", side_effect=launch), patch("backend.os.killpg"), self.assertRaises(ValueError):
+            with self.subTest(case=case), patch("haremizer.backend.probe_runtime", return_value=self.facts), patch(
+                    "haremizer.backend.subprocess.Popen", side_effect=launch), patch("haremizer.backend.os.killpg"), self.assertRaises(ValueError):
                 self.trainer.train(attempt)
             import shutil
             for child in attempt.directory.iterdir():
@@ -358,7 +358,7 @@ class BackendTests(unittest.TestCase):
     def test_attempt_bounds_and_core_integration_never_promote_without_reviewer(self):
         self.authorize_fixture()
         bad = self.attempt(2)
-        with patch("backend.probe_runtime") as probe, self.assertRaises(ValueError):
+        with patch("haremizer.backend.probe_runtime") as probe, self.assertRaises(ValueError):
             self.trainer.train(bad)
         probe.assert_not_called()
         bad.directory.rmdir()
@@ -367,8 +367,8 @@ class BackendTests(unittest.TestCase):
         self.run.approve_setup("synthetic harness setup only")
         reviewer = Mock()
         reviewer.evaluate.side_effect = RuntimeError("independent real visual evaluator remains missing")
-        with patch("backend.probe_runtime", return_value=self.facts), patch(
-                "backend.subprocess.Popen", side_effect=self.output_process) as launch, patch("backend.os.killpg"):
+        with patch("haremizer.backend.probe_runtime", return_value=self.facts), patch(
+                "haremizer.backend.subprocess.Popen", side_effect=self.output_process) as launch, patch("haremizer.backend.os.killpg"):
             state = self.run.execute(self.trainer, reviewer)
         launch.assert_called_once()
         self.assertEqual(state["status"], "failed")

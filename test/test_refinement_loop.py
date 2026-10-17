@@ -12,9 +12,9 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from core import REQUIRED_CHECKS
-from prepare import canonical_digest
-import refinement_loop as rl
+from haremizer.core import REQUIRED_CHECKS
+from haremizer.prepare import canonical_digest
+from haremizer import refinement_loop as rl
 
 
 class RefinementLoopTests(unittest.TestCase):
@@ -84,7 +84,7 @@ class RefinementLoopTests(unittest.TestCase):
     def child(self, argv, **kwargs):
         # du stays real. Trusted trainer/sampler argv is recorded by the loop, but
         # tests replace only the actual ML process with a tiny CPU subprocess.
-        if "smoke_sdxl.py" not in " ".join(argv) and "sample.py" not in " ".join(argv):
+        if "haremizer.smoke_sdxl" not in argv and "haremizer.sample" not in argv:
             return self.real_popen(argv, **kwargs)
         def arg(name):
             return argv[argv.index(name) + 1]

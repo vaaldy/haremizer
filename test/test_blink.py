@@ -10,8 +10,8 @@ import sys
 import tempfile
 import unittest
 
-from blink import blink
-from images import pillow, validate_png
+from haremizer.blink import blink
+from haremizer.images import pillow, validate_png
 
 
 class BlinkTests(unittest.TestCase):
@@ -170,7 +170,7 @@ class BlinkTests(unittest.TestCase):
 
     def test_cli(self):
         self.write_annotation()
-        command = [sys.executable, str(ROOT / "blink.py")]
+        command = [sys.executable, "-m", "haremizer.blink"]
         help_result = subprocess.run(command + ["--help"], capture_output=True, text=True)
         self.assertEqual(help_result.returncode, 0, help_result.stderr)
         result = subprocess.run(command + ["--source", str(self.source), "--annotation",

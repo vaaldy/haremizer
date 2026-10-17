@@ -14,9 +14,9 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
-import sample
+from haremizer import sample
 
-SUITE = ROOT / "evaluation-suite.json"
+SUITE = Path(sample.__file__).with_name("evaluation-suite.json")
 
 
 class EulerDiscreteScheduler:
@@ -97,9 +97,9 @@ class SamplingTests(unittest.TestCase):
         decoder = MagicMock(return_value=Image.new('RGBA', (768, 768), (1, 2, 3, 0)))
         events = []
         self.pipeline.load_lora_weights.side_effect = lambda *a, **kw: events.append('portrait')
-        with patch('layerdiffuse.validate', return_value=assets), \
-                patch('layerdiffuse.merge_attention', side_effect=lambda *a: events.append('offset') or 10), \
-                patch('layerdiffuse.Decoder', return_value=decoder):
+        with patch('haremizer.layerdiffuse.validate', return_value=assets), \
+                patch('haremizer.layerdiffuse.merge_attention', side_effect=lambda *a: events.append('offset') or 10), \
+                patch('haremizer.layerdiffuse.Decoder', return_value=decoder):
             report = self.run_sample(prompt='portrait', cpu_offload=True, layerdiffuse=self.root,
                                      lora=self.lora, lora_sha256=self.lora_sha256)
         self.assertEqual(events, ['offset', 'portrait'])
@@ -413,9 +413,9 @@ def guarded(name, *args, **kwargs):
         raise AssertionError('ML import forbidden')
     return original(name, *args, **kwargs)
 builtins.__import__ = guarded
-runpy.run_path('sample.py', run_name='import_check')
+runpy.run_module('haremizer.sample', run_name='import_check')
 sys.argv = ['sample.py', '--help']
-runpy.run_path('sample.py', run_name='__main__')
+runpy.run_module('haremizer.sample', run_name='__main__')
 """
         result = subprocess.run([sys.executable, "-B", "-c", code],
                                 cwd=ROOT, capture_output=True, text=True, timeout=10)

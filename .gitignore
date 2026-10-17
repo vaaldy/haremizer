@@ -12,3 +12,8 @@ __pycache__/
 /artifacts/*
 !/artifacts/sprites/
 /artifacts/sprites/*/internal/
+
+# local package builds
+/build/
+/dist/
+/src/*.egg-info/

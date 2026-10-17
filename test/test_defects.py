@@ -6,7 +6,7 @@ import unittest
 
 from PIL import Image
 
-from defects import CLASSES, analyse, detect, residue_colour
+from haremizer.defects import CLASSES, analyse, detect, residue_colour
 
 
 def sprite(rows, size=16, colours=None):

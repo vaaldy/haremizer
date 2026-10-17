@@ -1,6 +1,6 @@
 # Haremizer pipelines
 
-Current source map for the flat repository layout. Historical experiment values
+Current source map for the installed `haremizer` package (`src/haremizer/`). Historical experiment values
 below are examples, not universal defaults or quality guarantees. Training requires
 separately provisioned inputs and explicit authorization; this page grants none.
 See [local-model setup](../models.md) and the [original snapshot](../history/raw/PIPELINES.md).
@@ -13,16 +13,16 @@ Code entry points referenced below:
 
 | file | role |
 |---|---|
-| [`smoke_sdxl.py`](../../smoke_sdxl.py) | LoRA training (`--refine`) |
-| [`sample.py`](../../sample.py) | inference, optional LoRA and LayerDiffuse |
-| [`layerdiffuse.py`](../../layerdiffuse.py) | LayerDiffuse offset merge and CPU transparency decoder |
-| [`recovery.py`](../../recovery.py) | explicit background colour key |
-| [`blink.py`](../../blink.py) | hash-bound eye-region blink edit |
-| [`sprite_export.py`](../../sprite_export.py) | term-chan sprite JSON export |
-| [`refinement_loop.py`](../../refinement_loop.py) | bounded stage coordinator |
-| [`auto_loop.py`](../../auto_loop.py) | unattended driver over a hypothesis list |
-| [`score_sprite.py`](../../score_sprite.py), [`ink_stats.py`](../../ink_stats.py) | deterministic scoring |
-| [`matrix.py`](../../matrix.py) | side-by-side review pages |
+| [`smoke_sdxl.py`](../../src/haremizer/smoke_sdxl.py) | LoRA training (`--refine`) |
+| [`sample.py`](../../src/haremizer/sample.py) | inference, optional LoRA and LayerDiffuse |
+| [`layerdiffuse.py`](../../src/haremizer/layerdiffuse.py) | LayerDiffuse offset merge and CPU transparency decoder |
+| [`recovery.py`](../../src/haremizer/recovery.py) | explicit background colour key |
+| [`blink.py`](../../src/haremizer/blink.py) | hash-bound eye-region blink edit |
+| [`sprite_export.py`](../../src/haremizer/sprite_export.py) | term-chan sprite JSON export |
+| [`refinement_loop.py`](../../src/haremizer/refinement_loop.py) | bounded stage coordinator |
+| [`auto_loop.py`](../../src/haremizer/auto_loop.py) | unattended driver over a hypothesis list |
+| [`score_sprite.py`](../../src/haremizer/score_sprite.py), [`ink_stats.py`](../../src/haremizer/ink_stats.py) | deterministic scoring |
+| [`matrix.py`](../../src/haremizer/matrix.py) | side-by-side review pages |
 
 ## 1. Training
 
@@ -80,7 +80,7 @@ Order matters: the LayerDiffuse offset is merged **before** the style LoRA is lo
 fight over the same tensors. Example command:
 
 ```sh
-python -B sample.py --model /path/to/local/snapshot --output runs/local-alpha-example \
+python -B -m haremizer.sample --model /path/to/local/snapshot --output runs/local-alpha-example \
   --prompt '1girl, solo, bust portrait, pixel art' --width 768 --height 768 \
   --steps 28 --guidance-scale 5 --cpu-offload --scheduler euler_ancestral \
   --lora /path/to/adapter.safetensors --lora-sha256 FULL_SHA256 \

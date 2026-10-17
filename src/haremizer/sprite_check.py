@@ -4,7 +4,7 @@ from io import BytesIO
 from pathlib import Path
 import re
 
-from images import pillow, validate_png
+from .images import pillow, validate_png
 
 
 def check_legibility(source, annotation):

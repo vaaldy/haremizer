@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from core import Evaluation, REQUIRED_CHECKS, Run, fingerprint
+from haremizer.core import Evaluation, REQUIRED_CHECKS, Run, fingerprint
 
 
 class FakeTrainer:

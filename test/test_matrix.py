@@ -5,7 +5,7 @@ import unittest
 
 from PIL import Image
 
-from matrix import build, discover_stages, read_log
+from haremizer.matrix import build, discover_stages, read_log
 
 
 def write_png(path, color):

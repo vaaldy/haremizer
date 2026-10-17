@@ -7,8 +7,8 @@ import subprocess
 import sys
 import unittest
 
-from hair_motion import plan_hair, render_frame
-from images import pillow
+from haremizer.hair_motion import plan_hair, render_frame
+from haremizer.images import pillow
 
 
 class HairMotionTests(unittest.TestCase):
@@ -136,9 +136,9 @@ class HairMotionTests(unittest.TestCase):
             plan_hair(b"not a png", ann, 1, 8)
 
     def test_import_and_help_without_gpu_libraries(self):
-        code = "import hair_motion, sys; assert not any(k in sys.modules for k in ('torch','diffusers'))"
+        code = "import sys; from haremizer import hair_motion; assert not any(k in sys.modules for k in ('torch','diffusers'))"
         subprocess.run([sys.executable, "-B", "-c", code], check=True)
-        subprocess.run([sys.executable, "-B", "hair_motion.py", "--help"], check=True, stdout=subprocess.PIPE)
+        subprocess.run([sys.executable, "-B", "-m", "haremizer.hair_motion", "--help"], check=True, stdout=subprocess.PIPE)
 
 
 if __name__ == "__main__":

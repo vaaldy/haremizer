@@ -20,26 +20,26 @@ promotion. See [sample provenance and limitations](docs/samples.md).
 | Experimental, optional GPU | Local SDXL inference, LoRA training/evaluation, LayerDiffuse adaptation |
 | Not implemented | Reliable automatic eye/part detection, robust learned expressions, general image world model |
 
-## CPU quickstart (current flat source layout)
+## CPU quickstart
 
-Use Python 3.11+ with Pillow available. Work from the repository root; there is no
-installed package or console entrypoint in this layout. In a fresh environment,
-provision Pillow separately (for offline use, supply a locally available wheel):
+Use Python 3.11+. Install the package in a fresh environment; the only base
+dependency is Pillow (no PyTorch/model download):
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install --no-index --find-links /path/to/local/wheels Pillow
+.venv/bin/python -m pip install .
 ```
 
-Alternatively use an existing Python environment with Pillow. These commands only
-read the tracked example and create a **new**, ignored output; they do not run a model:
+For offline wheel build/install instructions, see [packaging](docs/packaging.md).
+From the checkout, these commands read the tracked example and create a **new**,
+ignored output; they do not run a model:
 
 ```sh
-python -B sprite_export.py \
+python -B -m haremizer.sprite_export \
   --base artifacts/sprites/kawaii-maid/neutral-base.png \
   --blink artifacts/sprites/kawaii-maid/neutral-blink.png \
   --output runs/quickstart/kawaii --name neutral
-python -B sprite_png.py --character runs/quickstart/kawaii
+python -B -m haremizer.sprite_png --character runs/quickstart/kawaii
 ```
 
 Here `python` means your Pillow-enabled interpreter (e.g. `.venv/bin/python`).
@@ -58,13 +58,13 @@ needed for the quickstart above.
 
 ## Tests
 
-From the repository root, using the same Pillow-enabled interpreter:
+After non-editable installation, from the repository root using that interpreter:
 
 ```sh
 python -B -m unittest discover -s test -q
 ```
 
-The existing suite contains 193 tests. Optional integration checks can skip when
+The suite preserves all 193 original tests plus installed-package checks. Optional integration checks can skip when
 their dependencies or sibling term-chan checkout are unavailable; skips are not
 GPU/model-quality validation. Tests do not establish reliable generation.
 

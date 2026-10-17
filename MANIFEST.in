@@ -1,0 +1,9 @@
+include LICENSE LICENSE.layerdiffuse.txt NOTICE.md
+include src/haremizer/evaluation-suite.json
+recursive-include test *.py
+prune artifacts
+prune docs/history
+prune runs
+prune models
+prune data
+prune prompts

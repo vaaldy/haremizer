@@ -3,8 +3,8 @@ import hashlib
 from io import BytesIO
 from pathlib import Path
 
-from images import pillow
-from ink_stats import ink_stats
+from .images import pillow
+from .ink_stats import ink_stats
 
 PALETTE_COLORS = 32
 SUBJECT_THRESHOLD = 24

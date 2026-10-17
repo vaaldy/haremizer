@@ -5,7 +5,7 @@ import unittest
 
 from PIL import Image
 
-from sprite_png import load, render, render_directory
+from haremizer.sprite_png import load, render, render_directory
 
 
 class SpritePngTests(unittest.TestCase):

@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import time
 
-from prepare import freeze_suite
+from .prepare import freeze_suite
 
 PIPELINES = ("StableDiffusionPipeline", "StableDiffusionXLPipeline")
 MAX_LORA_BYTES = 256 * 1024 * 1024
@@ -127,7 +127,7 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
             raise ValueError("LayerDiffuse requires SDXL, CPU offload and square dimensions <=768")
         if Path(layerdiffuse).resolve().is_relative_to(output):
             raise ValueError("output must not contain LayerDiffuse weights")
-        from layerdiffuse import validate
+        from .layerdiffuse import validate
         transparency_assets = validate(layerdiffuse)
     import torch
     import diffusers
@@ -141,7 +141,7 @@ def sample(model, output, *, suite=None, prompt=None, seed=1234, max_cases=4, st
         pipeline.scheduler = diffusers.EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config)
     transparent_decoder = None
     if transparency_assets is not None:
-        from layerdiffuse import merge_attention, Decoder
+        from .layerdiffuse import merge_attention, Decoder
         transparency_assets["merged_offset_keys"] = merge_attention(
             pipeline.unet, transparency_assets["files"]["attention"]["path"])
         transparent_decoder = Decoder(model, transparency_assets)

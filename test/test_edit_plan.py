@@ -7,8 +7,8 @@ import subprocess
 import sys
 import unittest
 
-from edit_plan import Abstention, plan_blink, plan_expression, lock_candidate, validate_candidate
-from images import pillow
+from haremizer.edit_plan import Abstention, plan_blink, plan_expression, lock_candidate, validate_candidate
+from haremizer.images import pillow
 
 
 class EditPlanTests(unittest.TestCase):
@@ -243,9 +243,9 @@ class EditPlanTests(unittest.TestCase):
             validate_candidate(self.raw, plan, locked.convert("RGB"))
 
     def test_lazy_import_and_help(self):
-        code = "import sys, edit_plan; assert 'torch' not in sys.modules; assert 'diffusers' not in sys.modules"
+        code = "import sys; from haremizer import edit_plan; assert 'torch' not in sys.modules; assert 'diffusers' not in sys.modules"
         subprocess.run([sys.executable, "-B", "-c", code], check=True)
-        subprocess.run([sys.executable, "-B", "edit_plan.py", "--help"], check=True,
+        subprocess.run([sys.executable, "-B", "-m", "haremizer.edit_plan", "--help"], check=True,
                        stdout=subprocess.PIPE)
 
 

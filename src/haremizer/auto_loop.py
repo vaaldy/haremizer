@@ -10,13 +10,10 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
-import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-import refinement_loop as rl  # noqa: E402
-from score_sprite import aggregate, compare, measure  # noqa: E402
+from . import refinement_loop as rl
+from .score_sprite import aggregate, compare, measure
 
 STYLE_TOKENS = 'bold dark outlines, flat colors, single-tone marks, clean seams'
 MAX_PROMPT_TOKENS = 77
@@ -58,7 +55,7 @@ def case_files(directory):
 
 class Driver:
     def __init__(self, mission_path, once=False):
-        self.mission_path = Path(mission_path)
+        self.mission_path = Path(mission_path).resolve()
         self.mission = json.loads(self.mission_path.read_bytes())
         self.root = self.mission_path.parent
         self.once = once
@@ -131,7 +128,7 @@ class Driver:
         plan = json.loads(Path(self.mission['plan']).read_bytes())
         plan['deadline_utc'] = self.mission['deadline_utc']
         model = plan['model']
-        argv = [plan['python'], '-B', 'sample.py', '--model', model['path'], '--model-id', model['id'],
+        argv = [*rl.module_argv(plan['python'], 'sample'), '--model', model['path'], '--model-id', model['id'],
                 '--revision', model['revision'], '--output', str(output), '--suite', str(suite_path),
                 '--width', '768', '--height', '768', '--steps', '28', '--max-cases', '4',
                 '--guidance-scale', '5', '--negative-prompt', plan['settings']['negative_prompt'],

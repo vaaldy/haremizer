@@ -1,7 +1,7 @@
 """Measure dark-ink stroke continuity in sprites; no quality verdict or automatic repair."""
 from pathlib import Path
 
-from images import pillow
+from .images import pillow
 
 
 def ink_stats(source, ink_max_rgb=32, size=64):

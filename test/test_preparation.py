@@ -9,9 +9,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import images
-import prepare
-import runtime
+from haremizer import images
+from haremizer import prepare
+from haremizer import runtime
 
 try:
     from PIL import Image
@@ -19,14 +19,14 @@ except ImportError:
     Image = None
 
 
-SUITE = ROOT / "evaluation-suite.json"
+SUITE = Path(prepare.__file__).with_name("evaluation-suite.json")
 
 
 class RuntimeTests(unittest.TestCase):
     def test_visibility_is_not_tensor_verification_and_environment_is_unchanged(self):
         before = dict(os.environ)
-        with patch("runtime.shutil.which", return_value="/visible-tool"), patch(
-                "runtime.bounded_command", return_value={"stdout": "GPU visible", "returncode": 0}) as command:
+        with patch("haremizer.runtime.shutil.which", return_value="/visible-tool"), patch(
+                "haremizer.runtime.bounded_command", return_value={"stdout": "GPU visible", "returncode": 0}) as command:
             evidence = runtime.probe_runtime()
         self.assertFalse(evidence["gpu_operations_verified"])
         self.assertEqual(evidence["torch_probe"]["status"], "not_requested")
@@ -35,8 +35,8 @@ class RuntimeTests(unittest.TestCase):
 
     def test_optional_torch_probe_reports_only_explicit_operation_evidence(self):
         for verified in (False, True):
-            with self.subTest(verified=verified), patch("runtime.shutil.which", return_value=None), patch(
-                    "runtime.bounded_command", return_value={"returncode": 0, "stdout_truncated": False,
+            with self.subTest(verified=verified), patch("haremizer.runtime.shutil.which", return_value=None), patch(
+                    "haremizer.runtime.bounded_command", return_value={"returncode": 0, "stdout_truncated": False,
                     "stdout": json.dumps({"gpu_visible": True, "gpu_operations_verified": verified})}) as command:
                 evidence = runtime.probe_runtime(torch_probe=True)
                 self.assertEqual(evidence["gpu_operations_verified"], verified)
@@ -44,8 +44,8 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(command.call_args.kwargs["timeout"], 30)
 
     def test_failed_or_missing_torch_cannot_verify_gpu(self):
-        with patch("runtime.shutil.which", return_value=None), patch(
-                "runtime.bounded_command", return_value={"returncode": 1, "stdout_truncated": False,
+        with patch("haremizer.runtime.shutil.which", return_value=None), patch(
+                "haremizer.runtime.bounded_command", return_value={"returncode": 1, "stdout_truncated": False,
                                                          "stderr": "ModuleNotFoundError: No module named 'torch'"}):
             evidence = runtime.probe_runtime(True)
         self.assertFalse(evidence["gpu_operations_verified"])
@@ -54,8 +54,8 @@ class RuntimeTests(unittest.TestCase):
     def test_signaled_and_timed_out_gpu_child_are_blocked(self):
         for child in ({"returncode": -11, "stdout": "", "stdout_truncated": False},
                       {"error": "TimeoutExpired: GPU child", "stdout": "", "stdout_truncated": False}):
-            with self.subTest(child=child), patch("runtime.shutil.which", return_value=None), patch(
-                    "runtime.bounded_command", return_value=dict(child)):
+            with self.subTest(child=child), patch("haremizer.runtime.shutil.which", return_value=None), patch(
+                    "haremizer.runtime.bounded_command", return_value=dict(child)):
                 evidence = runtime.probe_runtime(True)
             self.assertFalse(evidence["gpu_operations_verified"])
             self.assertEqual(evidence["torch_probe"]["status"], "blocked")
@@ -64,7 +64,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_explicit_override_is_recorded_not_applied_and_not_a_native_pass(self):
         with patch.dict(os.environ, {"HSA_OVERRIDE_GFX_VERSION": "10.3.0"}), patch(
-                "runtime.shutil.which", return_value=None), patch("runtime.bounded_command", return_value={
+                "haremizer.runtime.shutil.which", return_value=None), patch("haremizer.runtime.bounded_command", return_value={
                     "returncode": 0, "stdout_truncated": False,
                     "stdout": json.dumps({"gpu_visible": True, "gpu_operations_verified": True})}):
             before = dict(os.environ)
@@ -91,8 +91,8 @@ class RuntimeTests(unittest.TestCase):
             "print('(null): No such file or directory', file=sys.stderr)"])
         self.assertEqual(json.loads(result["stdout"]), {"gpu_operations_verified": True})
         self.assertIn("(null): No such file or directory", result["stderr"])
-        with patch("runtime.shutil.which", return_value=None), patch(
-                "runtime.bounded_command", return_value=result):
+        with patch("haremizer.runtime.shutil.which", return_value=None), patch(
+                "haremizer.runtime.bounded_command", return_value=result):
             evidence = runtime.probe_runtime(True)
         self.assertTrue(evidence["gpu_operations_verified"])
         self.assertEqual(evidence["torch_probe"]["status"], "verified")
@@ -148,7 +148,7 @@ class PreparationTests(unittest.TestCase):
             "torch_probe": {"evidence": {"torch_version": "fixture-torch", "hip_version": "fixture-hip",
                 "cuda_version": None, "gpu_visible": True, "device": "fixture-device"}},
         }
-        with patch("prepare.probe_runtime", return_value=evidence), patch(
+        with patch("haremizer.prepare.probe_runtime", return_value=evidence), patch(
                 "subprocess.run", side_effect=AssertionError("must not launch training")):
             return prepare.build_plan(**arguments)
 
@@ -353,7 +353,7 @@ class PreparationTests(unittest.TestCase):
     def test_cli_writes_only_blocked_manifest_and_never_overwrites_inputs(self):
         output = self.root / "plan.json"
         with patch("sys.argv", ["prepare.py", "--output", str(output)]), patch(
-                "prepare.probe_runtime", return_value={"gpu_operations_verified": False}), patch("builtins.print"):
+                "haremizer.prepare.probe_runtime", return_value={"gpu_operations_verified": False}), patch("builtins.print"):
             with self.assertRaises(SystemExit) as error:
                 prepare.main()
         self.assertEqual(error.exception.code, 2)
@@ -363,7 +363,7 @@ class PreparationTests(unittest.TestCase):
         self.assertFalse(plan["training_authorized"])
         for destination in (output, self.train / "new-plan.json", self.rights):
             with patch("sys.argv", ["prepare.py", "--train", str(self.train), "--rights", str(self.rights),
-                                     "--output", str(destination)]), patch("sys.stderr"), patch("prepare.build_plan") as build:
+                                     "--output", str(destination)]), patch("sys.stderr"), patch("haremizer.prepare.build_plan") as build:
                 with self.assertRaises(SystemExit):
                     prepare.main()
                 build.assert_not_called()

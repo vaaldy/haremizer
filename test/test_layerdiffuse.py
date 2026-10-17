@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import layerdiffuse
+from haremizer import layerdiffuse
 
 
 class AssetTests(unittest.TestCase):

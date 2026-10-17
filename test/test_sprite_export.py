@@ -13,8 +13,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from images import pillow, validate_png
-from sprite_export import export_sprite, INDEX_CHARS, MAX_INPUT_BYTES
+from haremizer.images import pillow, validate_png
+from haremizer.sprite_export import export_sprite, INDEX_CHARS, MAX_INPUT_BYTES
 
 
 class SpriteExportTests(unittest.TestCase):
@@ -173,7 +173,7 @@ class SpriteExportTests(unittest.TestCase):
             self.base.write_bytes(b"changed after snapshot")
             return metrics
 
-        with patch("sprite_export.validate_png", side_effect=validate_snapshot):
+        with patch("haremizer.sprite_export.validate_png", side_effect=validate_snapshot):
             report = export_sprite(self.base, self.output)
         self.assertEqual(report["inputs"]["base"]["sha256"], hashlib.sha256(raw).hexdigest())
         self.assertEqual(len(json.loads((self.output / "neutral.json").read_bytes())["palette"]), 62)
@@ -182,7 +182,7 @@ class SpriteExportTests(unittest.TestCase):
         self.make_png(self.blink, colors=[(61, 20, 30), (0, 20, 30)])
         for with_blink in (False, True):
             output = self.root / f"cli-{with_blink}"
-            command = [sys.executable, str(ROOT / "sprite_export.py"),
+            command = [sys.executable, "-m", "haremizer.sprite_export",
                        "--base", str(self.base), "--output", str(output)]
             if with_blink:
                 command += ["--blink", str(self.blink), "--provenance", str(self.root / "cli.json")]
@@ -195,7 +195,7 @@ class SpriteExportTests(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("TERM_CHAN_LOADER_TEST") == "1" and shutil.which("node"),
                          "optional read-only parent Node integration")
     def test_parent_loader_and_renderer(self):
-        parent = ROOT.parent
+        parent = Path(os.environ.get("TERM_CHAN_ROOT", ROOT.parent)).resolve()
         loader = parent / "src" / "sprites" / "loader.js"
         renderer = parent / "src" / "render" / "sprite.js"
         if not loader.is_file() or not renderer.is_file():

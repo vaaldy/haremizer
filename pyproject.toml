@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "haremizer"
+version = "0.1.0"
+description = "Experimental local portrait and deterministic sprite toolkit"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["Pillow>=9.1"]
+license = "MIT AND Apache-2.0"
+license-files = ["LICENSE", "LICENSE.layerdiffuse.txt", "NOTICE.md"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["haremizer"]
+namespaces = false
+
+[tool.setuptools.package-data]
+haremizer = ["evaluation-suite.json"]

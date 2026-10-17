@@ -10,7 +10,7 @@ import json
 import shutil
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path.cwd()
 
 SPRITES = {
     'kawaii-character-01': 'kawaii-maid-early',
@@ -157,10 +157,14 @@ def write_moves(name, moves):
 
 
 def main():
+    global ROOT
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--workspace', type=Path, required=True,
+                        help='explicit workspace containing runs/ and artifacts/')
     parser.add_argument('--apply', action='store_true', help='perform the moves; default is a dry run')
     parser.add_argument('--only', choices=('artifacts', 'runs'), help='limit to one tree')
     args = parser.parse_args()
+    ROOT = args.workspace.resolve()
     result = {}
     if args.only in (None, 'artifacts'):
         plan, moves = tidy_artifacts(args.apply)

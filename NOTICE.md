@@ -26,7 +26,7 @@ What this repository contains, what it deliberately leaves out, and the third-pa
 | component | role | licence | redistributed here |
 |---|---|---|---|
 | Animagine XL 4.0 (`cagliostrolab`) | SDXL base model used for generation and as the frozen reference in training | CreativeML OpenRAIL++-M | no |
-| LayerDiffuse code (`lllyasviel/LayerDiffuse_DiffusersCLI`, pinned commit `3061d9aed52a6c52a13fcf2b196c0fef4d727824`) | transparency attention offset and decoder | Apache-2.0 (see `LICENSE.layerdiffuse.txt`) | code adaptation only, in `layerdiffuse.py` |
+| LayerDiffuse code (`lllyasviel/LayerDiffuse_DiffusersCLI`, pinned commit `3061d9aed52a6c52a13fcf2b196c0fef4d727824`) | transparency attention offset and decoder | Apache-2.0 (see `LICENSE.layerdiffuse.txt`) | code adaptation only, in `src/haremizer/layerdiffuse.py` |
 | LayerDiffuse weights (`lllyasviel/LayerDiffuse_Diffusers`) | SDXL transparency offset and VAE decoder, hash-pinned | publisher labels the weight repository `openrail`, without a version or licence text | no |
 | CC0 reference art (`everface`, `nekomimi`/cawfeecrow, druiddess) | training references | CC0 | no |
 | CC-BY-4.0 reference art (`pebonius`, `alexwh`) | training references | CC-BY-4.0, attribution recorded in the run lineage | no |
@@ -46,7 +46,7 @@ without establishing semantic quality, automatic detection or robust native tran
 ## Licence of this repository
 
 Original code is MIT licensed, copyright 2026 Haremizer contributors; see [LICENSE](LICENSE).
-The adapted LayerDiffuse code in `layerdiffuse.py` remains Apache-2.0 under
+The adapted LayerDiffuse code in `src/haremizer/layerdiffuse.py` remains Apache-2.0 under
 [LICENSE.layerdiffuse.txt](LICENSE.layerdiffuse.txt), with its existing upstream attribution preserved.
 MIT does not relicense third-party code, model weights, datasets or generated-example artwork.
 Model/data/generated-output terms must be checked separately before redistribution. Available local

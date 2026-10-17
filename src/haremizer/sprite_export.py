@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import re
 
-from images import pillow, validate_png
+from .images import pillow, validate_png
 
 INDEX_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 MAX_INPUT_BYTES = 16 * 1024 * 1024

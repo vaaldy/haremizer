@@ -4,7 +4,7 @@ import unittest
 
 from PIL import Image
 
-from ink_stats import ink_stats
+from haremizer.ink_stats import ink_stats
 
 
 class InkStatsTests(unittest.TestCase):

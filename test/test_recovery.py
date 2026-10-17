@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
-import recovery
+from haremizer import recovery
 
 
 class RecoveryTests(unittest.TestCase):
@@ -103,7 +103,7 @@ class RecoveryTests(unittest.TestCase):
         alias = self.root / "alias"
         alias.symlink_to(self.inputs, target_is_directory=True)
         for output in (empty, occupied, self.source, self.inputs / "new", alias / "new", self.root):
-            with self.subTest(output=output), patch("recovery.pillow") as pillow:
+            with self.subTest(output=output), patch("haremizer.recovery.pillow") as pillow:
                 with self.assertRaises(ValueError):
                     recovery.recover(self.source, output, (255, 255, 255))
                 pillow.assert_not_called()
@@ -133,7 +133,7 @@ class RecoveryTests(unittest.TestCase):
             self.recover()
         with self.source.open("wb") as file:
             file.truncate(recovery.MAX_SOURCE_BYTES + 1)
-        with patch("recovery.pillow") as pillow, self.assertRaisesRegex(ValueError, "16 MiB"):
+        with patch("haremizer.recovery.pillow") as pillow, self.assertRaisesRegex(ValueError, "16 MiB"):
             self.recover()
         pillow.assert_not_called()
         self.assertFalse((self.root / "output").exists())
@@ -145,7 +145,7 @@ class RecoveryTests(unittest.TestCase):
                 self.recover(str(color))
 
     def test_cli_explicit_background_and_errors(self):
-        command = [sys.executable, "-B", str(Path(recovery.__file__)), "--source", str(self.source),
+        command = [sys.executable, "-B", "-m", "haremizer.recovery", "--source", str(self.source),
                    "--output", str(self.root / "cli")]
         missing = subprocess.run(command, capture_output=True, text=True)
         self.assertEqual(missing.returncode, 2)

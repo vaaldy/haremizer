@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
+import sys
 from pathlib import Path
 
 FONT_PATHS = ('/usr/share/fonts/TTF/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf')
@@ -95,8 +97,8 @@ def suite_cases(run, suite_name):
 
 def build(run, output, columns=8, cell=176, max_pages=None):
     Image, ImageDraw = pil()[0], pil()[1]
-    run = Path(run)
-    output = Path(output)
+    run = Path(run).resolve()
+    output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=True)
     entries = read_log(run / 'log.jsonl')
     stages = discover_stages(run)
@@ -164,9 +166,9 @@ def build(run, output, columns=8, cell=176, max_pages=None):
                       'the native-64 rendition sits under each 768 render'}
     (output / 'legend.json').write_text(json.dumps(legend, indent=2) + '\n')
     (output / 'regenerate.sh').write_text(
-        f'#!/bin/sh\ncd {Path(__file__).resolve().parent}\n'
-        f'exec python3 -B matrix.py --run {run} '
-        f'--output {output} --columns {columns}\n')
+        '#!/bin/sh\nexec ' + shlex.join([
+            sys.executable, '-I', '-B', '-m', 'haremizer.matrix', '--run', str(run),
+            '--output', str(output), '--columns', str(columns)]) + '\n')
     (output / 'regenerate.sh').chmod(0o755)
     return legend
 

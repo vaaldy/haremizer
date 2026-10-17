@@ -5,7 +5,7 @@ import unittest
 from PIL import Image
 
 
-from score_sprite import aggregate, compare, measure
+from haremizer.score_sprite import aggregate, compare, measure
 
 
 def write(path, rows, size=64):

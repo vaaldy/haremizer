@@ -7,8 +7,8 @@ import json
 import re
 from pathlib import Path, PurePosixPath
 
-from images import validate_png
-from runtime import probe_runtime
+from .images import validate_png
+from .runtime import probe_runtime
 
 
 def canonical_digest(value) -> str:

@@ -8,7 +8,7 @@ from io import BytesIO
 import json
 from pathlib import Path
 
-from images import pillow, validate_png
+from .images import pillow, validate_png
 
 
 MAX_SOURCE_BYTES = 16 * 1024 * 1024

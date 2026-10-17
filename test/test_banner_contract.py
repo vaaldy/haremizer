@@ -5,7 +5,7 @@ import tempfile
 
 from PIL import Image
 
-from images import BANNER_SIZES, validate_png
+from haremizer.images import BANNER_SIZES, validate_png
 
 
 class BannerContractTests(unittest.TestCase):

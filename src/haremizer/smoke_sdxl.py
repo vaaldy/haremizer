@@ -16,8 +16,8 @@ import sys
 import time
 from urllib.parse import urlparse
 
-from prepare import canonical_digest, nonempty
-from sample import model_manifest
+from .prepare import canonical_digest, nonempty
+from .sample import model_manifest
 
 CONFIG = {"batch_size": 1, "resolution": 512, "rank": 4, "seed": 1234,
           "learning_rate": 1e-4, "gradient_clip": 1.0}
